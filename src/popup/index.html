@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>ParserLib</title>
+  <style>
+    body { font: 13px system-ui, sans-serif; width: 320px; padding: 12px; }
+    label { display: block; margin-top: 8px; font-size: 12px; color: #555; }
+    input, select, button { width: 100%; box-sizing: border-box; padding: 6px; margin-top: 4px; }
+    button { margin-top: 10px; cursor: pointer; }
+    #status { margin-top: 10px; font-size: 12px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <label for="url">Ссылка на тайтл</label>
+  <input id="url" type="text" placeholder="https://mangalib.me/ru/manga/..." />
+
+  <label for="format">Формат</label>
+  <!-- Options are populated at runtime from src/export/registry.ts -->
+  <select id="format"></select>
+
+  <button id="start">Скачать</button>
+  <div id="status"></div>
+
+  <script type="module" src="./popup.js"></script>
+</body>
+</html>
