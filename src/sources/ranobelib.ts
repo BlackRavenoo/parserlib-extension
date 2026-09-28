@@ -56,7 +56,10 @@ function extractProseMirrorText(node: any): string {
 }
 
 // TODO: another node types???
-async function parseProseMirrorToChunks(doc: any): Promise<DataChunk[]> {
+async function parseProseMirrorToChunks(
+  doc: any,
+  attachments: Map<string, string>
+): Promise<DataChunk[]> {
   const chunks: DataChunk[] = [];
   const content = Array.isArray(doc?.content) ? doc.content : [];
 
@@ -65,10 +68,13 @@ async function parseProseMirrorToChunks(doc: any): Promise<DataChunk[]> {
       const text = extractProseMirrorText(node).trim();
       if (text) chunks.push({ kind: "text", text });
     } else if (node?.type === "image") {
-      const src = node?.attrs?.src ?? "";
-      if (!src) continue;
-      const image = await api.getImageByUrl(absolute(src));
-      chunks.push({ kind: "image", data: image.data, mime: image.mime });
+      const images = Array.isArray(node?.attrs?.images) ? node.attrs.images : [];
+      for (const item of images) {
+        const url = attachments.get(item?.image);
+        if (!url) continue;
+        const image = await api.getImageByUrl(absolute(url));
+        chunks.push({ kind: "image", data: image.data, mime: image.mime });
+      }
     }
   }
 
@@ -110,7 +116,10 @@ const source: Source = {
     }
 
     if (content && typeof content === "object") {
-      return { chunks: await parseProseMirrorToChunks(content) };
+      const attachments = new Map(
+        (data.attachments ?? []).map((a) => [a.name, a.url])
+      );
+      return { chunks: await parseProseMirrorToChunks(content, attachments) };
     }
 
     return { chunks: [] };

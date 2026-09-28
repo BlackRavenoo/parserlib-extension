@@ -26,6 +26,11 @@ export interface PageRow {
   url: string;
 }
 
+export interface Attachment {
+  name: string;
+  url: string;
+}
+
 export interface ChapterDataRow {
   id: number;
   volume: string;
@@ -34,6 +39,7 @@ export interface ChapterDataRow {
   name: string | null;
   pages?: PageRow[];
   content?: unknown;
+  attachments?: Attachment[];
 }
 
 export interface SiteHeaders {
