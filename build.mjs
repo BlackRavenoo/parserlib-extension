@@ -27,8 +27,6 @@ const isolatedBuild = {
   format: "iife",
   entryPoints: {
     background: "src/background/index.ts",
-    "content/mangalib-token": "src/content/mangalib-token.ts",
-    "content/ranobelib-token": "src/content/ranobelib-token.ts",
   },
   splitting: false,
 };

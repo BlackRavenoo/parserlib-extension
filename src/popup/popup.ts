@@ -1,10 +1,16 @@
 import { ext } from "../lib/browser";
 import { listFormats } from "../export/registry";
+import { resolveKeyByUrl } from "../sources/registry";
+import { readTokenFromTab, stashToken } from "../lib/token";
 
-const urlInput = document.getElementById("url") as HTMLInputElement;
 const formatSelect = document.getElementById("format") as HTMLSelectElement;
 const startButton = document.getElementById("start") as HTMLButtonElement;
-const statusEl = document.getElementById("status") as HTMLDivElement;
+const sourceEl = document.getElementById("source") as HTMLDivElement;
+
+const SOURCE_LABELS: Record<string, string> = {
+  mangalib: "MangaLib",
+  ranobelib: "RanobeLib",
+};
 
 for (const format of listFormats()) {
   const option = document.createElement("option");
@@ -13,21 +19,45 @@ for (const format of listFormats()) {
   formatSelect.append(option);
 }
 
+let currentUrl: string | null = null;
+let currentKey: string | null = null;
+let currentTabId: number | null = null;
+
 ext.tabs
   .queryActive()
   .then((tab) => {
-    if (tab?.url) urlInput.value = tab.url;
+    const url = tab?.url;
+    if (!url || tab?.id == null) {
+      sourceEl.textContent = "Не вижу адрес страницы.";
+      return;
+    }
+
+    const key = resolveKeyByUrl(url);
+    if (!key) {
+      sourceEl.textContent = "Эта страница не поддерживается. Открой тайтл.";
+      return;
+    }
+
+    currentUrl = url;
+    currentKey = key;
+    currentTabId = tab.id;
+    sourceEl.textContent = `${SOURCE_LABELS[key] ?? key}: ${new URL(url).pathname}`;
+    startButton.disabled = false;
   })
-  .catch(() => {});
+  .catch(() => {
+    sourceEl.textContent = "Не удалось прочитать адрес вкладки.";
+  });
 
-startButton.addEventListener("click", () => {
-  const url = urlInput.value.trim();
-  if (!url) {
-    statusEl.textContent = "Вставь ссылку на тайтл.";
-    return;
-  }
+startButton.addEventListener("click", async () => {
+  if (!currentUrl || !currentKey || currentTabId == null) return;
 
-  const params = new URLSearchParams({ url, format: formatSelect.value });
+  startButton.disabled = true;
+  sourceEl.textContent = "Читаю авторизацию…";
+
+  const token = await readTokenFromTab(currentTabId);
+  await stashToken(currentKey, token);
+
+  const params = new URLSearchParams({ url: currentUrl, format: formatSelect.value });
   ext.tabs.create({ url: chrome.runtime.getURL(`job/index.html?${params}`) });
   window.close();
 });

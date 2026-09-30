@@ -1,5 +1,6 @@
 import { ext } from "../lib/browser";
 import { patchApiHeaders } from "../lib/headers";
+import { takeToken } from "../lib/token";
 import { getSourceByUrl } from "../sources/registry";
 import { getExporter } from "../export/registry";
 import type { Book, BookChapter } from "../export/types";
@@ -18,17 +19,12 @@ function setStatus(text: string, done?: number, total?: number) {
   }
 }
 
-async function getToken(source: string): Promise<string | null> {
-  const stored = await ext.storage.session.get([`token:${source}`]);
-  const value = stored[`token:${source}`];
-  return typeof value === "string" ? value : null;
-}
-
 async function run(url: string, format: string): Promise<void> {
   const source = await getSourceByUrl(url);
   if (!source) throw new Error("Не найден источник для этой ссылки");
 
-  const token = await getToken(source.key);
+  const token = await takeToken(source.key);
+  console.info(token ? "[parserlib] авторизованная загрузка" : "[parserlib] анонимная загрузка");
 
   setStatus("Получаю список глав…");
   const { meta, chapters } = await source.fetchTitle(url, token);

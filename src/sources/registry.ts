@@ -7,8 +7,7 @@ const loaders: Record<string, SourceLoader> = {
   ranobelib: () => import("./ranobelib"),
   // To add a new source:
   //   1. create ./<key>.ts implementing Source;
-  //   2. add an entry to loaders and to hostToKey below;
-  //   3. add a token-capturing content script to manifest.json.
+  //   2. add an entry to loaders and to hostToKey below.
 };
 
 const hostToKey: Record<string, string> = {

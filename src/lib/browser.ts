@@ -25,20 +25,10 @@ export const ext = {
         hasNativeBrowser
           ? browser!.storage.session.set(items)
           : promisify((cb) => chrome.storage.session.set(items, () => cb(undefined))),
-    },
-  },
-  runtime: {
-    onMessage: (
-      handler: (msg: unknown, sender: chrome.runtime.MessageSender) => void | Promise<unknown>
-    ): void => {
-      chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-        const result = handler(msg, sender);
-        if (result instanceof Promise) {
-          result.then(sendResponse);
-          return true;
-        }
-        return undefined;
-      });
+      remove: (keys: string[] | string): Promise<void> =>
+        hasNativeBrowser
+          ? browser!.storage.session.remove(keys)
+          : promisify((cb) => chrome.storage.session.remove(keys, () => cb(undefined))),
     },
   },
   tabs: {
@@ -46,10 +36,28 @@ export const ext = {
       hasNativeBrowser
         ? browser!.tabs.query({ active: true, currentWindow: true }).then((t) => t[0])
         : promisify((cb) => chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => cb(tabs[0]))),
+    query: (info: chrome.tabs.QueryInfo): Promise<chrome.tabs.Tab[]> =>
+      hasNativeBrowser
+        ? browser!.tabs.query(info)
+        : promisify((cb) => chrome.tabs.query(info, cb)),
+    get: (tabId: number): Promise<chrome.tabs.Tab> =>
+      hasNativeBrowser
+        ? browser!.tabs.get(tabId)
+        : promisify((cb) => chrome.tabs.get(tabId, cb)),
     create: (options: chrome.tabs.CreateProperties): Promise<chrome.tabs.Tab> =>
       hasNativeBrowser
         ? browser!.tabs.create(options)
         : promisify((cb) => chrome.tabs.create(options, cb)),
+    remove: (tabId: number): Promise<void> =>
+      hasNativeBrowser
+        ? browser!.tabs.remove(tabId)
+        : promisify((cb) => chrome.tabs.remove(tabId, () => cb(undefined))),
+  },
+  scripting: {
+    executeScript: (injection: chrome.scripting.ScriptInjection<any[], any>): Promise<chrome.scripting.InjectionResult[]> =>
+      hasNativeBrowser
+        ? browser!.scripting.executeScript(injection)
+        : chrome.scripting.executeScript(injection),
   },
   downloads: {
     download: (options: chrome.downloads.DownloadOptions): Promise<number> =>
