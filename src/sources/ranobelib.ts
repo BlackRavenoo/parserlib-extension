@@ -1,11 +1,13 @@
 import type { ChapterContent, ChapterRef, Source, TitleMeta } from "./types";
 import type { DataChunk } from "../core/models";
 import { CdnlibsApi, chapterKey, chapterTitle } from "./cdnlibs";
+import type { SiteHeaders } from "./cdnlibs";
 
 const SLUG_RE = /ranobelib\.me\/\w+\/(?:book\/)?(\d+--[a-z_-]+)/;
 const SITE_ORIGIN = "https://ranobelib.me";
 
-const api = new CdnlibsApi({ siteId: "3", service: "ranobelib", origin: SITE_ORIGIN });
+const SITE: SiteHeaders = { siteId: "3", service: "ranobelib" };
+const api = new CdnlibsApi();
 
 function extractSlug(url: string): string {
   const match = SLUG_RE.exec(url);
@@ -37,7 +39,7 @@ async function parseHtmlToChunks(html: string): Promise<DataChunk[]> {
     } else if (node instanceof HTMLImageElement) {
       const src = node.getAttribute("src") ?? "";
       if (!src) continue;
-      const image = await api.getImageByUrl(absolute(src));
+      const image = await api.getImageByUrl(SITE, absolute(src));
       chunks.push({ kind: "image", data: image.data, mime: image.mime });
     }
   }
@@ -72,7 +74,7 @@ async function parseProseMirrorToChunks(
       for (const item of images) {
         const url = attachments.get(item?.image);
         if (!url) continue;
-        const image = await api.getImageByUrl(absolute(url));
+        const image = await api.getImageByUrl(SITE, absolute(url));
         chunks.push({ kind: "image", data: image.data, mime: image.mime });
       }
     }
@@ -90,7 +92,7 @@ const source: Source = {
 
     const slug = extractSlug(url);
 
-    const [manga, rows] = await Promise.all([api.getManga(slug), api.getChapters(slug)]);
+    const [manga, rows] = await Promise.all([api.getManga(SITE, slug), api.getChapters(SITE, slug)]);
 
     return {
       meta: {
@@ -108,7 +110,7 @@ const source: Source = {
   },
 
   async fetchChapter(chapter: ChapterRef, _token: string | null): Promise<ChapterContent> {
-    const data = await api.getChapterData(chapter.slug, chapter.key);
+    const data = await api.getChapterData(SITE, chapter.slug, chapter.key);
     const content = data.content;
 
     if (typeof content === "string") {

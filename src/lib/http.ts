@@ -5,6 +5,19 @@ export class RequestsBlockedByRateLimit extends Error {
   }
 }
 
+export interface RateProfile {
+  requestsPerMinute: number;
+  rateLimitRetries: number;
+  rateLimitRetryDelaySeconds: number;
+}
+
+export interface HttpClientConfig {
+  anonymous: RateProfile;
+  authenticated: RateProfile;
+  serverRetries: number;
+  serverRetryDelaySeconds: number;
+}
+
 class RateLimiter {
   private timestamps: number[] = [];
 
@@ -46,102 +59,82 @@ function retryAfterMs(res: Response): number | null {
   return Math.min(seconds * 1000, 120_000);
 }
 
-export interface HttpClientOptions {
-  headers: Record<string, string>;
-  anonymousRequestsPerMinute?: number;
-  authenticatedRequestsPerMinute?: number;
-  retries?: number;
-  retryDelaySeconds?: number;
-  anonymousRateLimitRetries?: number;
-  authenticatedRateLimitRetries?: number;
-  rateLimitRetryDelaySeconds?: number;
-}
-
 export class HttpClient {
   private readonly limiter: RateLimiter;
-  private readonly retries: number;
-  private readonly retryDelaySeconds: number;
-  private readonly rateLimitRetryDelaySeconds: number;
-  private readonly anonymousRateLimitRetries: number;
-  private readonly authenticatedRateLimitRetries: number;
-  private readonly anonymousLimit: number;
-  private readonly authenticatedLimit: number;
   private authToken: string | null = null;
 
-  constructor(
-    private readonly headers: Record<string, string>,
-    options: Omit<HttpClientOptions, "headers"> = {}
-  ) {
-    this.anonymousLimit = options.anonymousRequestsPerMinute ?? 90;
-    this.authenticatedLimit = options.authenticatedRequestsPerMinute ?? 600;
-    this.limiter = new RateLimiter(this.anonymousLimit, 60_000);
-    this.retries = options.retries ?? 3;
-    this.retryDelaySeconds = options.retryDelaySeconds ?? 1.0;
-    this.rateLimitRetryDelaySeconds = options.rateLimitRetryDelaySeconds ?? 5.0;
-    this.anonymousRateLimitRetries = options.anonymousRateLimitRetries ?? 2;
-    this.authenticatedRateLimitRetries = options.authenticatedRateLimitRetries ?? 8;
+  constructor(private readonly config: HttpClientConfig) {
+    this.limiter = new RateLimiter(config.anonymous.requestsPerMinute, 60_000);
+  }
+
+  private get profile(): RateProfile {
+    return this.authToken ? this.config.authenticated : this.config.anonymous;
   }
 
   setAuth(token: string | null): void {
     this.authToken = token;
-    this.limiter.setLimit(token ? this.authenticatedLimit : this.anonymousLimit);
+    this.limiter.setLimit(this.profile.requestsPerMinute);
   }
 
-  private headersForRequest(): Record<string, string> {
-    if (!this.authToken) return this.headers;
-    return { ...this.headers, Authorization: `Bearer ${this.authToken}` };
+  private headersForRequest(headers: Record<string, string>): Record<string, string> {
+    if (!this.authToken) return headers;
+    return { ...headers, Authorization: `Bearer ${this.authToken}` };
   }
 
-  async requestBytes(url: string): Promise<Uint8Array> {
-    return (await this.requestBinary(url)).data;
+  async requestBytes(url: string, headers: Record<string, string>): Promise<Uint8Array> {
+    return (await this.requestBinary(url, headers)).data;
   }
 
-  async requestBinary(url: string): Promise<{ data: Uint8Array; mime: string }> {
+  async requestBinary(
+    url: string,
+    headers: Record<string, string>
+  ): Promise<{ data: Uint8Array; mime: string }> {
+    const profile = this.profile;
+
     let serverRetries = 0;
-    let rateLimitRetries = 0;
-    const maxRateLimitRetries = this.authToken
-      ? this.authenticatedRateLimitRetries
-      : this.anonymousRateLimitRetries;
+    let throttleRetries = 0;
 
     for (;;) {
       await this.limiter.acquire();
 
       let res: Response;
       try {
-        res = await fetch(url, { headers: this.headersForRequest() });
+        res = await fetch(url, { headers: this.headersForRequest(headers) });
       } catch {
-        if (serverRetries >= this.retries) throw new Error(`Сеть недоступна: ${url}`);
+        if (serverRetries >= this.config.serverRetries) {
+          throw new Error(`Сеть недоступна: ${url}`);
+        }
         serverRetries++;
-        await sleep(this.retryDelaySeconds * 1000 * serverRetries);
+        await sleep(this.config.serverRetryDelaySeconds * 1000 * serverRetries);
         continue;
       }
 
       if (res.status === 429) {
-        if (rateLimitRetries >= maxRateLimitRetries) {
+        if (throttleRetries >= profile.rateLimitRetries) {
           throw new RequestsBlockedByRateLimit(url);
         }
-        rateLimitRetries++;
-        await sleep(retryAfterMs(res) ?? this.rateLimitRetryDelaySeconds * 1000 * rateLimitRetries);
-        continue;
-      }
-
-      if (res.status >= 500) {
-        if (serverRetries >= this.retries) {
-          throw new Error(`Запрос провалился со статусом ${res.status}: ${url}`);
-        }
-        serverRetries++;
-        await sleep(this.retryDelaySeconds * 1000 * serverRetries);
+        throttleRetries++;
+        await sleep(
+          retryAfterMs(res) ?? profile.rateLimitRetryDelaySeconds * 1000 * throttleRetries
+        );
         continue;
       }
 
       if (res.status === 403) {
-        if (rateLimitRetries >= maxRateLimitRetries) {
-          throw new Error(
-            `CDN не пропускает запросы (403). Попробуй позже — подожди несколько минут.`
-          );
+        if (throttleRetries >= profile.rateLimitRetries) {
+          throw new Error("CDN не пропускает запросы (403). Попробуй позже — подожди несколько минут.");
         }
-        rateLimitRetries++;
-        await sleep(this.rateLimitRetryDelaySeconds * 1000 * rateLimitRetries);
+        throttleRetries++;
+        await sleep(profile.rateLimitRetryDelaySeconds * 1000 * throttleRetries);
+        continue;
+      }
+
+      if (res.status >= 500) {
+        if (serverRetries >= this.config.serverRetries) {
+          throw new Error(`Запрос провалился со статусом ${res.status}: ${url}`);
+        }
+        serverRetries++;
+        await sleep(this.config.serverRetryDelaySeconds * 1000 * serverRetries);
         continue;
       }
 

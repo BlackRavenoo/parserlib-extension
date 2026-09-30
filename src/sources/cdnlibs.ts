@@ -1,8 +1,42 @@
 import { HttpClient } from "../lib/http";
+import type { HttpClientConfig } from "../lib/http";
 
 export const API_URL = "https://api.cdnlibs.org/api/manga";
 
 export const IMAGE_HOSTS = ["https://img2.mixlib.me", "https://img3.mixlib.me"];
+
+const CDNLIBS_LIMITS: HttpClientConfig = {
+  anonymous: {
+    requestsPerMinute: 90,
+    rateLimitRetries: 2,
+    rateLimitRetryDelaySeconds: 5,
+  },
+  authenticated: {
+    requestsPerMinute: 125,
+    rateLimitRetries: 8,
+    rateLimitRetryDelaySeconds: 5,
+  },
+  serverRetries: 3,
+  serverRetryDelaySeconds: 1,
+};
+
+const sharedHttp = new HttpClient(CDNLIBS_LIMITS);
+
+export interface SiteHeaders {
+  siteId: string;
+  service: string;
+}
+
+export function buildHeaders(site: SiteHeaders): Record<string, string> {
+  return {
+    Accept: "*/*",
+    "Accept-Language": "ru,en-US;q=0.9,en;q=0.8",
+    "Site-Id": site.siteId,
+    "X-DL-Service": site.service,
+    "Content-Type": "application/json",
+    "Client-Time-Zone": "Europe/Moscow",
+  };
+}
 
 export interface MangaRow {
   id: number;
@@ -42,23 +76,6 @@ export interface ChapterDataRow {
   attachments?: Attachment[];
 }
 
-export interface SiteHeaders {
-  siteId: string;
-  service: string;
-  origin: string;
-}
-
-export function buildHeaders(site: SiteHeaders): Record<string, string> {
-  return {
-    Accept: "*/*",
-    "Accept-Language": "ru,en-US;q=0.9,en;q=0.8",
-    "Site-Id": site.siteId,
-    "X-DL-Service": site.service,
-    "Content-Type": "application/json",
-    "Client-Time-Zone": "Europe/Moscow",
-  };
-}
-
 function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
@@ -68,45 +85,38 @@ function asArray(value: unknown): unknown[] {
 }
 
 export class CdnlibsApi {
-  readonly http: HttpClient;
-
-  constructor(
-    site: SiteHeaders,
-    httpOptions: { retries?: number; retryDelaySeconds?: number } = {}
-  ) {
-    this.http = new HttpClient(buildHeaders(site), httpOptions);
-  }
-
   setAuth(token: string | null): void {
-    this.http.setAuth(token);
+    sharedHttp.setAuth(token);
   }
 
-  private async getJson(url: string): Promise<any> {
-    return JSON.parse(new TextDecoder().decode(await this.http.requestBytes(url)));
+  private async getJson(url: string, site: SiteHeaders): Promise<any> {
+    return JSON.parse(
+      new TextDecoder().decode(await sharedHttp.requestBytes(url, buildHeaders(site)))
+    );
   }
 
-  async getManga(slug: string): Promise<MangaRow> {
-    const raw = await this.getJson(`${API_URL}/${slug}?fields[]=teams`);
+  async getManga(site: SiteHeaders, slug: string): Promise<MangaRow> {
+    const raw = await this.getJson(`${API_URL}/${slug}?fields[]=teams`, site);
     return raw?.data;
   }
 
-  async getChapters(slug: string): Promise<ChapterRow[]> {
-    const raw = await this.getJson(`${API_URL}/${slug}/chapters`);
+  async getChapters(site: SiteHeaders, slug: string): Promise<ChapterRow[]> {
+    const raw = await this.getJson(`${API_URL}/${slug}/chapters`, site);
     return asArray(raw?.data) as ChapterRow[];
   }
 
-  async getChapterData(slug: string, key: string): Promise<ChapterDataRow> {
-    const raw = await this.getJson(`${API_URL}/${slug}/chapter?${key}`);
+  async getChapterData(site: SiteHeaders, slug: string, key: string): Promise<ChapterDataRow> {
+    const raw = await this.getJson(`${API_URL}/${slug}/chapter?${key}`, site);
     return raw?.data ?? {};
   }
 
-  async getImageByPath(path: string): Promise<{ data: Uint8Array; mime: string }> {
+  async getImageByPath(site: SiteHeaders, path: string): Promise<{ data: Uint8Array; mime: string }> {
     const cleanPath = path.replace(/^\/+/, "/");
     let lastError: unknown;
 
     for (const host of IMAGE_HOSTS) {
       try {
-        return await this.http.requestBinary(`${host}${cleanPath}`);
+        return await sharedHttp.requestBinary(`${host}${cleanPath}`, buildHeaders(site));
       } catch (err) {
         lastError = err;
         continue;
@@ -118,8 +128,8 @@ export class CdnlibsApi {
       : new Error("Не удалось скачать картинку: не настроено ни одного хоста");
   }
 
-  async getImageByUrl(url: string): Promise<{ data: Uint8Array; mime: string }> {
-    return this.http.requestBinary(url);
+  async getImageByUrl(site: SiteHeaders, url: string): Promise<{ data: Uint8Array; mime: string }> {
+    return sharedHttp.requestBinary(url, buildHeaders(site));
   }
 }
 
