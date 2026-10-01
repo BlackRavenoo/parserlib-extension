@@ -1,7 +1,7 @@
 import { ext } from "../lib/browser";
 import { listFormats } from "../export/registry";
-import { resolveKeyByUrl } from "../sources/registry";
-import { readTokenFromTab, stashToken } from "../lib/token";
+import { getSourceByUrl, resolveKeyByUrl } from "../sources/registry";
+import { readFromTab, readTokenFromTab, stashToken } from "../lib/token";
 
 const formatSelect = document.getElementById("format") as HTMLSelectElement;
 const startButton = document.getElementById("start") as HTMLButtonElement;
@@ -25,7 +25,7 @@ let currentTabId: number | null = null;
 
 ext.tabs
   .queryActive()
-  .then((tab) => {
+  .then(async (tab) => {
     const url = tab?.url;
     if (!url || tab?.id == null) {
       sourceEl.textContent = "Не вижу адрес страницы.";
@@ -33,16 +33,22 @@ ext.tabs
     }
 
     const key = resolveKeyByUrl(url);
-    if (!key) {
-      sourceEl.textContent = "Эта страница не поддерживается. Открой тайтл.";
+    const source = key ? await getSourceByUrl(url) : null;
+    const slug = source?.titleSlug(url) ?? null;
+    if (!key || !source || !slug) {
+      sourceEl.textContent = "На этой странице нечего скачивать.";
       return;
     }
 
     currentUrl = url;
     currentKey = key;
     currentTabId = tab.id;
-    sourceEl.textContent = `${SOURCE_LABELS[key] ?? key}: ${new URL(url).pathname}`;
     startButton.disabled = false;
+
+    const title = source.titleInPage ? await readFromTab(tab.id, source.titleInPage) : null;
+    sourceEl.textContent = title
+      ? `${SOURCE_LABELS[key] ?? key}: ${title}`
+      : `${SOURCE_LABELS[key] ?? key}: ${new URL(url).pathname}`;
   })
   .catch(() => {
     sourceEl.textContent = "Не удалось прочитать адрес вкладки.";

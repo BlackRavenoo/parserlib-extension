@@ -2,6 +2,7 @@ import type { ChapterContent, ChapterRef, Source, TitleMeta } from "./types";
 import type { DataChunk } from "../core/models";
 import { CdnlibsApi, chapterKey, chapterTitle } from "./cdnlibs";
 import type { SiteHeaders } from "./cdnlibs";
+import { libSocialTitle } from "./libsocial";
 
 const SLUG_RE = /ranobelib\.me\/\w+\/(?:book\/)?(\d+--[a-z_-]+)/;
 const SITE_ORIGIN = "https://ranobelib.me";
@@ -83,23 +84,39 @@ async function parseProseMirrorToChunks(
   return chunks;
 }
 
+async function fetchMeta(slug: string, token: string | null): Promise<TitleMeta> {
+  api.setAuth(token);
+  const manga = await api.getManga(SITE, slug);
+  return {
+    id: String(manga.id),
+    title: manga.rus_name || manga.name,
+    coverUrl: manga.cover?.default ?? manga.cover?.md,
+  };
+}
+
 const source: Source = {
   key: "ranobelib",
   kind: "novel",
 
-  async fetchTitle(url: string, token: string | null): Promise<{ meta: TitleMeta; chapters: ChapterRef[] }> {
-    api.setAuth(token);
+  titleSlug(url: string): string | null {
+    return SLUG_RE.exec(url)?.[1] ?? null;
+  },
 
+  titleInPage: libSocialTitle,
+
+  async fetchTitle(url: string, token: string | null): Promise<{ meta: TitleMeta; chapters: ChapterRef[] }> {
     const slug = extractSlug(url);
 
-    const [manga, rows] = await Promise.all([api.getManga(SITE, slug), api.getChapters(SITE, slug)]);
+    const [meta, rows] = await Promise.all([
+      fetchMeta(slug, token),
+      (async () => {
+        api.setAuth(token);
+        return api.getChapters(SITE, slug);
+      })(),
+    ]);
 
     return {
-      meta: {
-        id: String(manga.id),
-        title: manga.rus_name || manga.name,
-        coverUrl: manga.cover?.default ?? manga.cover?.md,
-      },
+      meta,
       chapters: rows.map((row) => ({
         id: row.index,
         title: chapterTitle(row),
