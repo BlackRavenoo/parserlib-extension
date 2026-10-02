@@ -19,31 +19,68 @@ export interface HttpClientConfig {
 }
 
 class RateLimiter {
-  private timestamps: number[] = [];
+  private capacity: number;
+  private refillPerMs: number;
+  private tokens: number;
+  private lastRefill: number;
+  private queue: Array<() => void> = [];
+  private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
-    private limit: number,
+    limit: number,
     private readonly intervalMs: number
-  ) {}
-
-  setLimit(limit: number): void {
-    this.limit = limit;
+  ) {
+    this.capacity = limit;
+    this.refillPerMs = limit / intervalMs;
+    this.tokens = limit;
+    this.lastRefill = Date.now();
   }
 
-  async acquire(): Promise<void> {
-    for (;;) {
-      const now = Date.now();
-      const cutoff = now - this.intervalMs;
-      this.timestamps = this.timestamps.filter((t) => t > cutoff);
-
-      if (this.timestamps.length < this.limit) {
-        this.timestamps.push(now);
-        return;
-      }
-
-      const oldest = this.timestamps[0]!;
-      await sleep(Math.max(oldest + this.intervalMs - now, 2));
+  setLimit(limit: number): void {
+    this.capacity = limit;
+    this.refillPerMs = limit / this.intervalMs;
+    this._refill();
+    this.tokens = Math.min(this.tokens, limit);
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
     }
+    if (this.queue.length > 0) this._schedule();
+  }
+
+  private _refill(): void {
+    const now = Date.now();
+    this.tokens = Math.min(this.capacity, this.tokens + (now - this.lastRefill) * this.refillPerMs);
+    this.lastRefill = now;
+  }
+
+  acquire(): Promise<void> {
+    this._refill();
+    if (this.queue.length === 0 && this.tokens >= 1) {
+      this.tokens -= 1;
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      this.queue.push(resolve);
+      if (this.timer === null) this._schedule();
+    });
+  }
+
+  private _schedule(): void {
+    const waitMs = Math.max(Math.ceil((1 - this.tokens) / this.refillPerMs), 1);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this._pump();
+    }, waitMs);
+  }
+
+  private _pump(): void {
+    this._refill();
+    while (this.queue.length > 0 && this.tokens >= 1) {
+      this.tokens -= 1;
+      this.queue.shift()!();
+    }
+    if (this.queue.length > 0) this._schedule();
   }
 }
 
