@@ -3,7 +3,7 @@ import type { HttpClientConfig } from "../lib/http";
 
 export const API_URL = "https://api.cdnlibs.org/api/manga";
 
-export const IMAGE_HOSTS = ["https://img2.mixlib.me", "https://img3.mixlib.me"];
+export const IMAGE_HOSTS = ["https://img2.mixlib.me", "https://img3.cdnlibs.org"];
 
 const CDNLIBS_LIMITS: HttpClientConfig = {
   anonymous: {

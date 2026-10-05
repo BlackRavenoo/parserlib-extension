@@ -30,7 +30,7 @@
     "https://api.cdnlibs.org/*",
     "https://cover.cdnlibs.org/*",
     "https://img2.mixlib.me/*",
-    "https://img3.mixlib.me/*"
+    "https://img3.cdnlibs.org/*"
   ],
   "browser_specific_settings": {
     "gecko": {
