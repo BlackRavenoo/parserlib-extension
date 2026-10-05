@@ -19,7 +19,7 @@ function makeRule(headers: typeof HEADERS) {
       requestHeaders: headers,
     },
     condition: {
-      urlFilter: "||api.cdnlibs.org",
+      urlFilter: "||api.cdnlibs.org ||cover.cdnlibs.org",
       resourceTypes: ["xmlhttprequest"],
       excludedInitiatorDomains: ["mangalib.me", "mangalib.org", "ranobelib.me"],
     },
