@@ -1,13 +1,5 @@
 import type { Book, Exporter } from "./types";
-
-function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
+import { escapeXml } from "./types";
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";

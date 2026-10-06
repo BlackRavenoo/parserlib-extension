@@ -1,13 +1,5 @@
 import type { Book, Exporter } from "./types";
-
-function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
+import { escapeXml } from "./types";
 
 function extFromMime(mime: string): string {
   const subtype = (mime.split(";")[0] ?? "").split("/")[1]?.trim() ?? "";
@@ -36,7 +28,7 @@ const epubExporter: Exporter = {
 
     const manifestItems: string[] = [];
     const spineItems: string[] = [];
-    const navPoints: string[] = [];
+    const tocEntries: Array<{ title: string; fileName: string }> = [];
 
     if (book.coverImage) {
       const coverExt = extFromMime(book.coverImage.mime);
@@ -83,14 +75,30 @@ const epubExporter: Exporter = {
         `<item id="ch-${chapter.id}" href="${fileName}" media-type="application/xhtml+xml"/>`
       );
       spineItems.push(`<itemref idref="ch-${chapter.id}"/>`);
-      navPoints.push(
-        `<navPoint id="navpoint-${i}" playOrder="${i + 1}"><navLabel><text>${escapeXml(
-          chapter.title
-        )}</text></navLabel><content src="${fileName}"/></navPoint>`
-      );
+      tocEntries.push({ title: chapter.title, fileName });
     });
 
     const bookId = `urn:uuid:${crypto.randomUUID()}`;
+
+    zip.file(
+      "OEBPS/nav.xhtml",
+      `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head>
+  <title>${escapeXml(book.title)}</title>
+</head>
+<body>
+  <nav epub:type="toc" id="toc">
+    <h1>Содержание</h1>
+    <ol>
+      ${tocEntries
+        .map((entry) => `<li><a href="${entry.fileName}">${escapeXml(entry.title)}</a></li>`)
+        .join("\n      ")}
+    </ol>
+  </nav>
+</body>
+</html>`
+    );
 
     zip.file(
       "OEBPS/content.opf",
@@ -105,6 +113,7 @@ const epubExporter: Exporter = {
   </metadata>
   <manifest>
     <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
     ${manifestItems.join("\n    ")}
   </manifest>
   <spine toc="ncx">
@@ -120,7 +129,14 @@ const epubExporter: Exporter = {
   <head><meta name="dtb:uid" content="${bookId}"/></head>
   <docTitle><text>${escapeXml(book.title)}</text></docTitle>
   <navMap>
-    ${navPoints.join("\n    ")}
+    ${tocEntries
+      .map(
+        (entry, i) =>
+          `<navPoint id="navpoint-${i}" playOrder="${i + 1}"><navLabel><text>${escapeXml(
+            entry.title
+          )}</text></navLabel><content src="${entry.fileName}"/></navPoint>`
+      )
+      .join("\n    ")}
   </navMap>
 </ncx>`
     );
