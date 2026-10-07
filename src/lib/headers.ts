@@ -1,45 +1,62 @@
+import type { Source } from "../sources/types";
+
 const RULE_ID = 1;
 
-const HEADERS = [
-  { header: "user-agent", operation: "set", value: "Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0" },
-  { header: "referer", operation: "set", value: "https://mangalib.me/" },
-  { header: "origin", operation: "set", value: "https://mangalib.me" },
-  { header: "sec-gpc", operation: "set", value: "1" },
-  { header: "sec-fetch-dest", operation: "set", value: "empty" },
-  { header: "sec-fetch-mode", operation: "set", value: "cors" },
-  { header: "sec-fetch-site", operation: "set", value: "cross-site" },
-];
+export interface HeaderRule {
+  header: string;
+  operation: "set" | "append" | "remove";
+  value?: string;
+}
 
-function makeRule(headers: typeof HEADERS) {
+export interface RequestPatch {
+  urlFilter: string;
+  headers: HeaderRule[];
+  excludedInitiatorDomains: string[];
+}
+
+function makeRule(patch: RequestPatch) {
   return {
     id: RULE_ID,
     priority: 1,
     action: {
       type: "modifyHeaders",
-      requestHeaders: headers,
+      requestHeaders: patch.headers,
     },
     condition: {
-      urlFilter: "||api.cdnlibs.org ||cover.cdnlibs.org",
+      urlFilter: patch.urlFilter,
       resourceTypes: ["xmlhttprequest"],
-      excludedInitiatorDomains: ["mangalib.me", "mangalib.org", "ranobelib.me"],
+      excludedInitiatorDomains: patch.excludedInitiatorDomains,
     },
   } as unknown as chrome.declarativeNetRequest.Rule;
 }
 
-export async function patchApiHeaders(): Promise<boolean> {
+export async function patchApiHeaders(source: Source): Promise<boolean> {
   const dnr = chrome.declarativeNetRequest;
 
   if (!dnr) {
-    console.warn("[headers] chrome.declarativeNetRequest недоступен. ");
+    console.warn("[headers] chrome.declarativeNetRequest недоступен.");
     return false;
   }
 
+  const patch = source.requestPatch ? source.requestPatch() : null;
+
+  if (!patch) {
+    try {
+      await dnr.updateDynamicRules({ removeRuleIds: [RULE_ID] });
+      console.info("[headers] источнику заголовки не нужны, правило снято");
+      return true;
+    } catch (err) {
+      console.warn("[headers] не удалось снять правило", err);
+      return false;
+    }
+  }
+
   try {
-    await dnr.updateDynamicRules({ removeRuleIds: [RULE_ID], addRules: [makeRule(HEADERS)] });
-    console.info(`[headers] подставлено заголовков: ${HEADERS.length}`);
+    await dnr.updateDynamicRules({ removeRuleIds: [RULE_ID], addRules: [makeRule(patch)] });
+    console.info(`[headers] подставлено заголовков: ${patch.headers.length} для ${source.key}`);
     return true;
   } catch (err) {
-    console.warn(`[headers] правило на ${HEADERS.length} заголовков отвергнуто`, err);
+    console.warn(`[headers] правило на ${patch.headers.length} заголовков отвергнуто`, err);
   }
 
   return false;

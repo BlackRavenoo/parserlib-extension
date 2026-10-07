@@ -1,7 +1,7 @@
 import { HttpClient } from "../lib/http";
 import type { HttpClientConfig } from "../lib/http";
 
-export const API_URL = "https://api.cdnlibs.org/api/manga";
+const API_URL = "https://api.cdnlibs.org/api/manga";
 
 export const IMAGE_HOSTS = ["https://img2.mixlib.me", "https://img3.cdnlibs.org"];
 
@@ -38,10 +38,17 @@ export function buildHeaders(site: SiteHeaders): Record<string, string> {
   };
 }
 
+export interface AuthorRow {
+  id: number;
+  name: string;
+  rus_name: string | null;
+}
+
 export interface MangaRow {
   id: number;
   name: string;
   rus_name: string;
+  authors?: AuthorRow[];
   cover?: { filename: string | null; default?: string; md?: string };
 }
 
@@ -80,8 +87,15 @@ function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
+function excerpt(value: unknown): string {
+  const text = typeof value === "string" ? value : JSON.stringify(value) ?? String(value);
+  return text.length > 200 ? `${text.slice(0, 200)}…` : text;
+}
+
+function apiError(what: string, slug: string, raw: unknown): Error {
+  return new Error(
+    `${what} для «${slug}»: ответ API не содержит ожидаемых данных. Ответ: ${excerpt(raw)}`
+  );
 }
 
 export class CdnlibsApi {
@@ -96,18 +110,27 @@ export class CdnlibsApi {
   }
 
   async getManga(site: SiteHeaders, slug: string): Promise<MangaRow> {
-    const raw = await this.getJson(`${API_URL}/${slug}?fields[]=teams`, site);
-    return raw?.data;
+    const raw = await this.getJson(`${API_URL}/${slug}?fields[]=teams&fields[]=authors`, site);
+    if (!raw?.data || typeof raw.data !== "object") {
+      throw apiError("Не удалось получить описание работы", slug, raw);
+    }
+    return raw.data as MangaRow;
   }
 
   async getChapters(site: SiteHeaders, slug: string): Promise<ChapterRow[]> {
     const raw = await this.getJson(`${API_URL}/${slug}/chapters`, site);
-    return asArray(raw?.data) as ChapterRow[];
+    if (!Array.isArray(raw?.data)) {
+      throw apiError("Не удалось получить список глав", slug, raw);
+    }
+    return raw.data as ChapterRow[];
   }
 
   async getChapterData(site: SiteHeaders, slug: string, key: string): Promise<ChapterDataRow> {
     const raw = await this.getJson(`${API_URL}/${slug}/chapter?${key}`, site);
-    return raw?.data ?? {};
+    if (!raw?.data || typeof raw.data !== "object") {
+      throw apiError("Не удалось получить содержимое главы", slug, raw);
+    }
+    return raw.data as ChapterDataRow;
   }
 
   async getImageByPath(site: SiteHeaders, path: string): Promise<{ data: Uint8Array; mime: string }> {

@@ -1,7 +1,8 @@
 import { ext } from "../lib/browser";
 import { listFormats } from "../export/registry";
 import { getSourceByUrl, resolveKeyByUrl } from "../sources/registry";
-import { readFromTab, readTokenFromTab, stashToken } from "../lib/token";
+import { readFromTab, stashToken } from "../lib/token";
+import type { Source } from "../sources/types";
 
 const formatSelect = document.getElementById("format") as HTMLSelectElement;
 const startButton = document.getElementById("start") as HTMLButtonElement;
@@ -22,6 +23,7 @@ for (const format of listFormats()) {
 let currentUrl: string | null = null;
 let currentKey: string | null = null;
 let currentTabId: number | null = null;
+let currentSource: Source | null = null;
 
 ext.tabs
   .queryActive()
@@ -43,6 +45,7 @@ ext.tabs
     currentUrl = url;
     currentKey = key;
     currentTabId = tab.id;
+    currentSource = source;
     startButton.disabled = false;
 
     const title = source.titleInPage ? await readFromTab(tab.id, source.titleInPage) : null;
@@ -60,7 +63,8 @@ startButton.addEventListener("click", async () => {
   startButton.disabled = true;
   sourceEl.textContent = "Читаю авторизацию…";
 
-  const token = await readTokenFromTab(currentTabId);
+  const { tokenInPage } = currentSource ?? {};
+  const token = tokenInPage ? await readFromTab(currentTabId, tokenInPage) : null;
   await stashToken(currentKey, token);
 
   const params = new URLSearchParams({ url: currentUrl, format: formatSelect.value });

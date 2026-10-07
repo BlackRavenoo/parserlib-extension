@@ -2,7 +2,7 @@ import type { ChapterContent, ChapterRef, Source, TitleMeta } from "./types";
 import type { DataChunk } from "../core/models";
 import { CdnlibsApi, chapterKey, chapterTitle } from "./cdnlibs";
 import type { SiteHeaders } from "./cdnlibs";
-import { libSocialTitle } from "./libsocial";
+import { libSocialTitle, libSocialToken, libSocialRequestPatch } from "./libsocial";
 
 const SLUG_RE = /mangalib\.(?:me|org)\/\w+\/(?:manga\/)?(\d+--[a-z_-]+)/;
 
@@ -26,6 +26,7 @@ async function fetchMeta(slug: string, token: string | null): Promise<TitleMeta>
   return {
     id: String(manga.id),
     title: manga.rus_name || manga.name,
+    author: manga.authors?.[0]?.rus_name || manga.authors?.[0]?.name,
     coverUrl: manga.cover?.default ?? manga.cover?.md,
   };
 }
@@ -39,6 +40,10 @@ const source: Source = {
   },
 
   titleInPage: libSocialTitle,
+
+  tokenInPage: libSocialToken,
+
+  requestPatch: libSocialRequestPatch,
 
   async fetchTitle(url: string, token: string | null): Promise<{ meta: TitleMeta; chapters: ChapterRef[] }> {
     const slug = extractSlug(url);
@@ -65,6 +70,9 @@ const source: Source = {
   async fetchChapter(chapter: ChapterRef, _token: string | null): Promise<ChapterContent> {
     const data = await api.getChapterData(SITE, chapter.slug, chapter.key);
     const pages = data.pages ?? [];
+    if (pages.length === 0) {
+      throw new Error(`Глава «${chapter.title}» не содержит ни одной страницы.`);
+    }
 
     const downloaded = await Promise.all(
       pages.map(async (page) => ({ page, image: await api.getImageByPath(SITE, page.url) }))

@@ -1,30 +1,5 @@
 import { ext } from "./browser";
 
-export async function readTokenFromTab(tabId: number): Promise<string | null> {
-  try {
-    const results = await ext.scripting.executeScript({
-      target: { tabId },
-      func: () => {
-        const raw = localStorage.getItem("auth");
-        if (!raw) return null;
-        try {
-          const session = JSON.parse(raw);
-          const token = session?.token?.access_token;
-          return typeof token === "string" && token.length > 0 ? token : null;
-        } catch {
-          return null;
-        }
-      },
-    });
-    for (const r of results) {
-      if (typeof r.result === "string" && r.result.length > 0) return r.result;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 export async function readFromTab(tabId: number, fn: () => string | null): Promise<string | null> {
   try {
     const results = await ext.scripting.executeScript({

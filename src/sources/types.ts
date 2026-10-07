@@ -1,4 +1,5 @@
 import type { DataChunk } from "../core/models";
+import type { RequestPatch } from "../lib/headers";
 
 export interface ChapterRef {
   id: number;
@@ -25,6 +26,10 @@ export interface Source {
   titleSlug(url: string): string | null;
 
   readonly titleInPage?: () => string | null;
+
+  readonly tokenInPage?: () => string | null;
+
+  readonly requestPatch?: () => RequestPatch;
 
   fetchTitle(url: string, token: string | null): Promise<{ meta: TitleMeta; chapters: ChapterRef[] }>;
 

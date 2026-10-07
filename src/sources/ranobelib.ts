@@ -2,7 +2,7 @@ import type { ChapterContent, ChapterRef, Source, TitleMeta } from "./types";
 import type { DataChunk } from "../core/models";
 import { CdnlibsApi, chapterKey, chapterTitle } from "./cdnlibs";
 import type { SiteHeaders } from "./cdnlibs";
-import { libSocialTitle } from "./libsocial";
+import { libSocialTitle, libSocialToken, libSocialRequestPatch } from "./libsocial";
 
 const SLUG_RE = /ranobelib\.me\/\w+\/(?:book\/)?(\d+--[a-z_-]+)/;
 const SITE_ORIGIN = "https://ranobelib.me";
@@ -58,7 +58,6 @@ function extractProseMirrorText(node: any): string {
   return content.map(extractProseMirrorText).join("");
 }
 
-// TODO: another node types???
 async function parseProseMirrorToChunks(
   doc: any,
   attachments: Map<string, string>
@@ -90,6 +89,7 @@ async function fetchMeta(slug: string, token: string | null): Promise<TitleMeta>
   return {
     id: String(manga.id),
     title: manga.rus_name || manga.name,
+    author: manga.authors?.[0]?.rus_name || manga.authors?.[0]?.name,
     coverUrl: manga.cover?.default ?? manga.cover?.md,
   };
 }
@@ -103,6 +103,10 @@ const source: Source = {
   },
 
   titleInPage: libSocialTitle,
+
+  tokenInPage: libSocialToken,
+
+  requestPatch: libSocialRequestPatch,
 
   async fetchTitle(url: string, token: string | null): Promise<{ meta: TitleMeta; chapters: ChapterRef[] }> {
     const slug = extractSlug(url);
@@ -131,17 +135,27 @@ const source: Source = {
     const content = data.content;
 
     if (typeof content === "string") {
-      return { chunks: await parseHtmlToChunks(content) };
+      const chunks = await parseHtmlToChunks(content);
+      if (chunks.length === 0) {
+        throw new Error(`Глава «${chapter.title}» не содержит ни текста, ни иллюстраций.`);
+      }
+      return { chunks };
     }
 
     if (content && typeof content === "object") {
       const attachments = new Map(
         (data.attachments ?? []).map((a) => [a.name, a.url])
       );
-      return { chunks: await parseProseMirrorToChunks(content, attachments) };
+      const chunks = await parseProseMirrorToChunks(content, attachments);
+      if (chunks.length === 0) {
+        throw new Error(`Глава «${chapter.title}» не содержит ни текста, ни иллюстраций.`);
+      }
+      return { chunks };
     }
 
-    return { chunks: [] };
+    throw new Error(
+      `Глава «${chapter.title}»: не удалось распознать формат содержимого (${typeof content}).`
+    );
   },
 };
 

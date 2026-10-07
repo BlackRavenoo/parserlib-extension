@@ -1,3 +1,4 @@
-import { patchApiHeaders } from "../lib/headers";
-
-patchApiHeaders();
+chrome.declarativeNetRequest
+  ?.updateDynamicRules({ removeRuleIds: [1] })
+  .catch(() => {
+  });
