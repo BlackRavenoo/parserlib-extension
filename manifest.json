@@ -35,7 +35,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "parserlib-extension@example.invalid",
-      "strict_min_version": "115.0"
+      "strict_min_version": "121.0"
     }
   }
 }
