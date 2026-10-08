@@ -1,20 +1,16 @@
 import type { RequestPatch } from "../lib/headers";
 
-const FIREFOX_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0";
-
 const LIBSOCIAL_DOMAINS = ["mangalib.me", "mangalib.org", "ranobelib.me"];
 
-export function libSocialRequestPatch(): RequestPatch {
+export function libSocialRequestPatch(pageUrl: string): RequestPatch {
+  const origin = new URL(pageUrl).origin;
+
   return {
-    urlFilter: "||api.cdnlibs.org ||cover.cdnlibs.org",
+    requestDomains: ["api.cdnlibs.org", "cover.cdnlibs.org"],
     excludedInitiatorDomains: LIBSOCIAL_DOMAINS,
     headers: [
-      { header: "user-agent", operation: "set", value: FIREFOX_UA },
-      { header: "referer", operation: "set", value: "https://mangalib.me/" },
-      { header: "origin", operation: "set", value: "https://mangalib.me" },
-      { header: "sec-gpc", operation: "set", value: "1" },
-      { header: "sec-fetch-dest", operation: "set", value: "empty" },
-      { header: "sec-fetch-mode", operation: "set", value: "cors" },
+      { header: "referer", operation: "set", value: `${origin}/` },
+      { header: "origin", operation: "set", value: origin },
       { header: "sec-fetch-site", operation: "set", value: "cross-site" },
     ],
   };

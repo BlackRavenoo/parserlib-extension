@@ -22,15 +22,6 @@ const pagesBuild = {
   chunkNames: "chunks/[name]-[hash]",
 };
 
-const isolatedBuild = {
-  ...common,
-  format: "iife",
-  entryPoints: {
-    background: "src/background/index.ts",
-  },
-  splitting: false,
-};
-
 function copyStaticFiles() {
   cpSync("manifest.json", `${outdir}/manifest.json`);
   mkdirSync(`${outdir}/popup`, { recursive: true });
@@ -41,12 +32,12 @@ function copyStaticFiles() {
 }
 
 if (watch) {
-  const ctxs = await Promise.all([esbuild.context(pagesBuild), esbuild.context(isolatedBuild)]);
-  await Promise.all(ctxs.map((c) => c.watch()));
+  const ctx = await esbuild.context(pagesBuild);
+  await ctx.watch();
   copyStaticFiles();
   console.log("Watching for changes...");
 } else {
-  await Promise.all([esbuild.build(pagesBuild), esbuild.build(isolatedBuild)]);
+  await esbuild.build(pagesBuild);
   copyStaticFiles();
   console.log("Build complete -> dist/");
 }

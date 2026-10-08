@@ -29,7 +29,7 @@ export interface Source {
 
   readonly tokenInPage?: () => string | null;
 
-  readonly requestPatch?: () => RequestPatch;
+  readonly requestPatch?: (pageUrl: string) => RequestPatch;
 
   fetchTitle(url: string, token: string | null): Promise<{ meta: TitleMeta; chapters: ChapterRef[] }>;
 

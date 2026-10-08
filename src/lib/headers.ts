@@ -9,7 +9,7 @@ export interface HeaderRule {
 }
 
 export interface RequestPatch {
-  urlFilter: string;
+  requestDomains: string[];
   headers: HeaderRule[];
   excludedInitiatorDomains: string[];
 }
@@ -23,14 +23,14 @@ function makeRule(patch: RequestPatch) {
       requestHeaders: patch.headers,
     },
     condition: {
-      urlFilter: patch.urlFilter,
+      requestDomains: patch.requestDomains,
       resourceTypes: ["xmlhttprequest"],
       excludedInitiatorDomains: patch.excludedInitiatorDomains,
     },
   } as unknown as chrome.declarativeNetRequest.Rule;
 }
 
-export async function patchApiHeaders(source: Source): Promise<boolean> {
+export async function patchApiHeaders(source: Source, pageUrl: string): Promise<boolean> {
   const dnr = chrome.declarativeNetRequest;
 
   if (!dnr) {
@@ -38,25 +38,21 @@ export async function patchApiHeaders(source: Source): Promise<boolean> {
     return false;
   }
 
-  const patch = source.requestPatch ? source.requestPatch() : null;
-
-  if (!patch) {
-    try {
-      await dnr.updateDynamicRules({ removeRuleIds: [RULE_ID] });
-      console.info("[headers] источнику заголовки не нужны, правило снято");
-      return true;
-    } catch (err) {
-      console.warn("[headers] не удалось снять правило", err);
-      return false;
-    }
-  }
+  const patch = source.requestPatch ? source.requestPatch(pageUrl) : null;
 
   try {
-    await dnr.updateDynamicRules({ removeRuleIds: [RULE_ID], addRules: [makeRule(patch)] });
+    await dnr.updateDynamicRules({ removeRuleIds: [RULE_ID] });
+    if (!patch) {
+      await dnr.updateSessionRules({ removeRuleIds: [RULE_ID] });
+      console.info("[headers] источнику заголовки не нужны, правило снято");
+      return true;
+    }
+
+    await dnr.updateSessionRules({ removeRuleIds: [RULE_ID], addRules: [makeRule(patch)] });
     console.info(`[headers] подставлено заголовков: ${patch.headers.length} для ${source.key}`);
     return true;
   } catch (err) {
-    console.warn(`[headers] правило на ${patch.headers.length} заголовков отвергнуто`, err);
+    console.warn("[headers] не удалось обновить правило", err);
   }
 
   return false;

@@ -27,7 +27,7 @@ async function run(url: string, format: string): Promise<void> {
   const source = await getSourceByUrl(url);
   if (!source) throw new Error("Не найден источник для этой ссылки");
 
-  const headersOk = await patchApiHeaders(source);
+  const headersOk = await patchApiHeaders(source, url);
   if (!headersOk) {
     throw new Error(
       "Не удалось настроить заголовки запроса. " +
