@@ -44,6 +44,3 @@ export async function getSourceByUrl(url: string): Promise<Source | null> {
   return getSource(key);
 }
 
-export function listSourceKeys(): string[] {
-  return Object.keys(loaders);
-}

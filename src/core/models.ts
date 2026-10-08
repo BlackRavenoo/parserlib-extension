@@ -10,11 +10,3 @@ export interface ImageChunk {
 }
 
 export type DataChunk = TextChunk | ImageChunk;
-
-export function textChunk(text: string): TextChunk {
-  return { kind: "text", text };
-}
-
-export function imageChunk(data: Uint8Array, mime: string): ImageChunk {
-  return { kind: "image", data, mime };
-}
