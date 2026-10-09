@@ -5,6 +5,7 @@ type ExporterLoader = () => Promise<{ default: Exporter }>;
 const loaders: Record<string, ExporterLoader> = {
   fb2: () => import("./fb2"),
   epub: () => import("./epub"),
+  pdf: () => import("./pdf"),
 };
 
 export async function getExporter(format: string): Promise<Exporter> {
