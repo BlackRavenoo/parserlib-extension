@@ -31,6 +31,17 @@ async function fetchMeta(slug: string, token: string | null): Promise<TitleMeta>
   };
 }
 
+async function fetchChapters(slug: string, token: string | null): Promise<ChapterRef[]> {
+  api.setAuth(token);
+  const rows = await api.getChapters(SITE, slug);
+  return rows.map((row) => ({
+    id: row.index,
+    title: chapterTitle(row),
+    key: chapterKey(row),
+    slug,
+  }));
+}
+
 const source: Source = {
   key: "mangalib",
   kind: "manga",
@@ -48,26 +59,20 @@ const source: Source = {
   async fetchTitle(url: string, token: string | null): Promise<{ meta: TitleMeta; chapters: ChapterRef[] }> {
     const slug = extractSlug(url);
 
-    const [meta, rows] = await Promise.all([
+    const [meta, chapters] = await Promise.all([
       fetchMeta(slug, token),
-      (async () => {
-        api.setAuth(token);
-        return api.getChapters(SITE, slug);
-      })(),
+      fetchChapters(slug, token),
     ]);
 
-    return {
-      meta,
-      chapters: rows.map((row) => ({
-        id: row.index,
-        title: chapterTitle(row),
-        key: chapterKey(row),
-        slug,
-      })),
-    };
+    return { meta, chapters };
   },
 
-  async fetchChapter(chapter: ChapterRef, _token: string | null): Promise<ChapterContent> {
+  async fetchChapters(url: string, token: string | null): Promise<ChapterRef[]> {
+    return fetchChapters(extractSlug(url), token);
+  },
+
+  async fetchChapter(chapter: ChapterRef, token: string | null): Promise<ChapterContent> {
+    api.setAuth(token);
     const data = await api.getChapterData(SITE, chapter.slug, chapter.key);
     const pages = data.pages ?? [];
     if (pages.length === 0) {

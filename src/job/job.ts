@@ -1,7 +1,6 @@
 import { ext } from "../lib/browser";
-import { patchApiHeaders } from "../lib/headers";
-import { takeToken } from "../lib/token";
-import { getSourceByUrl } from "../sources/registry";
+import { takeJobPlan } from "../lib/job-plan";
+import { getSource } from "../sources/registry";
 import { getExporter } from "../export/registry";
 import type { Book, BookChapter } from "../export/types";
 import { sanitizeFilename } from "../export/types";
@@ -10,7 +9,7 @@ const statusEl = document.getElementById("status") as HTMLDivElement;
 const titleEl = document.getElementById("title") as HTMLHeadingElement;
 const barEl = document.getElementById("bar") as HTMLProgressElement;
 
-function setStatus(text: string, done?: number, total?: number) {
+function setStatus(text: string, done?: number, total?: number): void {
   statusEl.textContent = text;
   if (done !== undefined && total) {
     barEl.max = total;
@@ -18,48 +17,29 @@ function setStatus(text: string, done?: number, total?: number) {
   }
 }
 
-function showError(message: string) {
+function showError(message: string): void {
   statusEl.classList.add("error");
   statusEl.textContent = message;
 }
 
-async function run(url: string, format: string): Promise<void> {
-  const source = await getSourceByUrl(url);
-  if (!source) throw new Error("Не найден источник для этой ссылки");
+async function run(planId: string): Promise<void> {
+  const plan = await takeJobPlan(planId);
+  if (!plan) throw new Error("Не найдены параметры загрузки. Вернитесь в popup и запустите её снова.");
 
-  const headersOk = await patchApiHeaders(source, url);
-  if (!headersOk) {
-    throw new Error(
-      "Не удалось настроить заголовки запроса. " +
-        "Загрузка невозможна. Перезагрузите расширение и попробуйте снова."
-    );
-  }
-
-  const token = await takeToken(source.key);
-
-  setStatus(
-    token
-      ? "Авторизованная загрузка. Получаю список глав…"
-      : "Анонимная загрузка. Получаю список глав…"
-  );
-
-  const { meta, chapters } = await source.fetchTitle(url, token);
-  titleEl.textContent = meta.title;
-
-  const ordered = [...chapters].sort((a, b) => a.id - b.id);
-  if (ordered.length === 0) {
-    throw new Error("У этой работы нет ни одной главы — скачивать нечего.");
-  }
+  const source = await getSource(plan.sourceKey);
+  titleEl.textContent = plan.meta.title;
+  setStatus("Подготавливаю загрузку…");
+  barEl.hidden = false;
 
   const bookChapters: BookChapter[] = [];
   let failure: Error | null = null;
 
-  for (let i = 0; i < ordered.length; i++) {
-    const chapterRef = ordered[i]!;
-    setStatus(`Скачиваю главы: ${i + 1}/${ordered.length}`, i, ordered.length);
+  for (let i = 0; i < plan.chapters.length; i++) {
+    const chapterRef = plan.chapters[i]!;
+    setStatus(`Скачиваю главы: ${i + 1}/${plan.chapters.length}`, i, plan.chapters.length);
 
     try {
-      const content = await source.fetchChapter(chapterRef, token);
+      const content = await source.fetchChapter(chapterRef, plan.token);
       bookChapters.push({ id: chapterRef.id, title: chapterRef.title, chunks: content.chunks });
     } catch (err) {
       failure = err instanceof Error ? err : new Error(String(err));
@@ -75,16 +55,16 @@ async function run(url: string, format: string): Promise<void> {
   const downloaded = bookChapters.length;
   setStatus(
     failure
-      ? `Скачано глав: ${downloaded} из ${ordered.length}. Собираю файл…`
+      ? `Скачано глав: ${downloaded} из ${plan.chapters.length}. Собираю файл…`
       : "Собираю файл…",
     downloaded,
-    ordered.length
+    plan.chapters.length
   );
 
   let coverImage: { data: Uint8Array; mime: string } | undefined;
-  if (meta.coverUrl) {
+  if (plan.meta.coverUrl) {
     try {
-      const res = await fetch(meta.coverUrl);
+      const res = await fetch(plan.meta.coverUrl);
       if (res.ok) {
         coverImage = {
           data: new Uint8Array(await res.arrayBuffer()),
@@ -98,39 +78,41 @@ async function run(url: string, format: string): Promise<void> {
     }
   }
 
-  const book: Book = { title: meta.title, author: meta.author, coverImage, chapters: bookChapters };
-  const exporter = await getExporter(format);
+  const book: Book = {
+    title: plan.meta.title,
+    author: plan.meta.author,
+    coverImage,
+    chapters: bookChapters,
+  };
+  const exporter = await getExporter(plan.format);
   const blob = await exporter.export(book);
 
   const objectUrl = URL.createObjectURL(blob);
   try {
     await ext.downloads.download({
       url: objectUrl,
-      filename: `${sanitizeFilename(meta.title)}.${exporter.extension}`,
+      filename: `${sanitizeFilename(plan.meta.title)}.${exporter.extension}`,
       saveAs: false,
     });
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
 
-  barEl.max = ordered.length;
+  barEl.max = plan.chapters.length;
   barEl.value = downloaded;
 
   if (failure) {
     showError(
-      `Случилась ошибка. Файл сохранён с главами 1–${downloaded} из ${ordered.length}. ` +
+      `Случилась ошибка. Файл сохранён с главами 1–${downloaded} из ${plan.chapters.length}. ` +
         `На главе ${downloaded + 1} загрузка остановилась: ${failure.message}\n`
     );
     return;
   }
 
-  setStatus("Готово, файл сохранён. Вкладку можно закрыть.", ordered.length, ordered.length);
+  setStatus("Готово, файл сохранён. Вкладку можно закрыть.", plan.chapters.length, plan.chapters.length);
 }
 
-const params = new URLSearchParams(location.search);
-const url = params.get("url") ?? "";
-const format = params.get("format") ?? "fb2";
-
-run(url, format).catch((err: unknown) => {
+const planId = new URLSearchParams(location.search).get("plan") ?? "";
+run(planId).catch((err: unknown) => {
   showError(`Ошибка: ${err instanceof Error ? err.message : String(err)}`);
 });

@@ -29,22 +29,13 @@ export function libSocialToken(): string | null {
 }
 
 export function libSocialTitle(): string | null {
-  const h1 = document.querySelector("h1.anx_anz")?.textContent?.trim();
-  if (h1) return h1;
+  const heading = document.querySelector("h1.anx_anz")?.textContent?.trim();
+  if (heading) return heading;
 
-  const og = document
-    .querySelector('meta[property="og:title"]')
-    ?.getAttribute("content");
-  if (og) {
-    const parts: string[] = og
-      .split(" · ")
-      .map((s: string) => s.trim())
-      .filter(Boolean);
-    if (parts.length >= 2 && /^Читать\s+\d+/i.test(parts[parts.length - 1]!)) {
-      parts.pop();
-    }
-    if (parts.length >= 2) return parts.slice(1).join(" · ");
-    return parts[0] || og;
-  }
-  return null;
+  const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute("content");
+  if (!ogTitle) return null;
+
+  const parts = ogTitle.split(" · ").map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2 && /^Читать\s+\d+/i.test(parts[parts.length - 1]!)) parts.pop();
+  return parts.length >= 2 ? parts.slice(1).join(" · ") : parts[0] || ogTitle;
 }

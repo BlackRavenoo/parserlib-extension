@@ -33,5 +33,7 @@ export interface Source {
 
   fetchTitle(url: string, token: string | null): Promise<{ meta: TitleMeta; chapters: ChapterRef[] }>;
 
+  fetchChapters(url: string, token: string | null): Promise<ChapterRef[]>;
+
   fetchChapter(chapter: ChapterRef, token: string | null): Promise<ChapterContent>;
 }

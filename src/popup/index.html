@@ -4,23 +4,35 @@
   <meta charset="utf-8" />
   <title>ParserLib</title>
   <style>
-    body { font: 13px system-ui, sans-serif; width: 320px; padding: 12px; }
-    label { display: block; margin-top: 8px; font-size: 12px; color: #555; }
+    body { font: 13px system-ui, sans-serif; width: 340px; padding: 12px; }
+    label { display: block; margin-top: 10px; font-size: 12px; color: #555; }
     select, button { width: 100%; box-sizing: border-box; padding: 6px; margin-top: 4px; }
-    button { margin-top: 10px; cursor: pointer; }
+    button { margin-top: 12px; cursor: pointer; }
     button:disabled { cursor: default; opacity: 0.5; }
-    #source { margin-top: 4px; padding: 6px 0; }
+    #source { margin: 4px 0 8px; overflow-wrap: anywhere; }
+    #range { display: block; }
+    #status { color: #555; white-space: pre-wrap; }
+    #status.error { color: #b00020; }
+    #chapter-count { margin: 4px 0 0; color: #666; font-size: 12px; }
   </style>
 </head>
 <body>
   <div id="source">Определяю страницу…</div>
-
-  <label for="format">Формат</label>
-  <!-- Options are populated at runtime from src/export/registry.ts -->
-  <select id="format"></select>
-
-  <button id="start" disabled>Скачать</button>
-
+  <div id="status" role="status"></div>
+  <form id="settings-form" hidden>
+    <label for="format">Формат</label>
+    <select id="format"></select>
+    <div id="range">
+      <label for="range-from">С главы
+        <select id="range-from" required disabled></select>
+      </label>
+      <label for="range-to">По главу
+        <select id="range-to" required disabled></select>
+      </label>
+    </div>
+    <p id="chapter-count"></p>
+    <button id="start" type="submit" disabled>Скачать</button>
+  </form>
   <script type="module" src="./popup.js"></script>
 </body>
 </html>

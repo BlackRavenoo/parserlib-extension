@@ -14,22 +14,3 @@ export async function readFromTab(tabId: number, fn: () => string | null): Promi
     return null;
   }
 }
-
-const TOKEN_KEY_PREFIX = "token:";
-
-export async function stashToken(sourceKey: string, token: string | null): Promise<void> {
-  const key = `${TOKEN_KEY_PREFIX}${sourceKey}`;
-  if (token) {
-    await ext.storage.session.set({ [key]: token });
-  } else {
-    await ext.storage.session.remove(key);
-  }
-}
-
-export async function takeToken(sourceKey: string): Promise<string | null> {
-  const key = `${TOKEN_KEY_PREFIX}${sourceKey}`;
-  const stored = await ext.storage.session.get([key]);
-  const value = stored[key];
-  await ext.storage.session.remove(key);
-  return typeof value === "string" ? value : null;
-}
