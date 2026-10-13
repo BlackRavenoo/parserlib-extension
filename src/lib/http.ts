@@ -18,6 +18,11 @@ export interface HttpClientConfig {
   serverRetryDelaySeconds: number;
 }
 
+export interface HttpRequestOptions {
+  includeAuth?: boolean;
+  credentials?: RequestCredentials;
+}
+
 class RateLimiter {
   private capacity: number;
   private refillPerMs: number;
@@ -113,8 +118,8 @@ export class HttpClient {
     this.limiter.setLimit(this.profile.requestsPerMinute);
   }
 
-  private headersForRequest(headers: Record<string, string>): Record<string, string> {
-    if (!this.authToken) return headers;
+  private headersForRequest(headers: Record<string, string>, includeAuth: boolean): Record<string, string> {
+    if (!includeAuth || !this.authToken) return headers;
     return { ...headers, Authorization: `Bearer ${this.authToken}` };
   }
 
@@ -124,7 +129,8 @@ export class HttpClient {
 
   async requestBinary(
     url: string,
-    headers: Record<string, string>
+    headers: Record<string, string>,
+    options: HttpRequestOptions = {}
   ): Promise<{ data: Uint8Array; mime: string }> {
     const profile = this.profile;
 
@@ -136,7 +142,10 @@ export class HttpClient {
 
       let res: Response;
       try {
-        res = await fetch(url, { headers: this.headersForRequest(headers) });
+        res = await fetch(url, {
+          headers: this.headersForRequest(headers, options.includeAuth !== false),
+          credentials: options.credentials,
+        });
       } catch {
         if (serverRetries >= this.config.serverRetries) {
           throw new Error(`Сеть недоступна: ${url}`);

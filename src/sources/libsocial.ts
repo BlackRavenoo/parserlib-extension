@@ -3,7 +3,9 @@ import type { RequestPatch } from "../lib/headers";
 const LIBSOCIAL_DOMAINS = ["mangalib.me", "mangalib.org", "ranobelib.me"];
 
 export function libSocialRequestPatch(pageUrl: string): RequestPatch {
-  const origin = new URL(pageUrl).origin;
+  const page = new URL(pageUrl);
+  const origin = page.origin;
+  const isRanobeLib = page.hostname === "ranobelib.me" || page.hostname.endsWith(".ranobelib.me");
 
   return {
     requestDomains: ["api.cdnlibs.org", "cover.cdnlibs.org"],
@@ -13,6 +15,23 @@ export function libSocialRequestPatch(pageUrl: string): RequestPatch {
       { header: "origin", operation: "set", value: origin },
       { header: "sec-fetch-site", operation: "set", value: "cross-site" },
     ],
+    ...(isRanobeLib && {
+      additionalRules: [
+        {
+          requestDomains: ["ranobelib.me"],
+          excludedInitiatorDomains: LIBSOCIAL_DOMAINS,
+          headers: [
+            {
+              header: "accept",
+              operation: "set",
+              value: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            },
+            { header: "referer", operation: "set", value: pageUrl },
+            { header: "sec-fetch-site", operation: "set", value: "same-origin" },
+          ],
+        },
+      ],
+    }),
   };
 }
 

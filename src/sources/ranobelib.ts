@@ -123,7 +123,7 @@ async function parseHtmlToChunks(html: string): Promise<DataChunk[]> {
     } else if (node instanceof HTMLImageElement) {
       const src = node.getAttribute("src") ?? "";
       if (!src) continue;
-      const image = await api.getImageByUrl(SITE, absolute(src));
+      const image = await api.getImageByUrl(absolute(src));
       chunks.push({ kind: "image", data: image.data, mime: image.mime });
     }
   }
@@ -148,7 +148,7 @@ async function parseProseMirrorToChunks(
       for (const item of images) {
         const url = attachments.get(item?.image);
         if (!url) continue;
-        const image = await api.getImageByUrl(SITE, absolute(url));
+        const image = await api.getImageByUrl(absolute(url));
         chunks.push({ kind: "image", data: image.data, mime: image.mime });
       }
     }

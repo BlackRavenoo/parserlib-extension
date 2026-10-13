@@ -151,8 +151,8 @@ export class CdnlibsApi {
       : new Error("Не удалось скачать картинку: не настроено ни одного хоста");
   }
 
-  async getImageByUrl(site: SiteHeaders, url: string): Promise<{ data: Uint8Array; mime: string }> {
-    return sharedHttp.requestBinary(url, buildHeaders(site));
+  async getImageByUrl(url: string): Promise<{ data: Uint8Array; mime: string }> {
+    return sharedHttp.requestBinary(url, {}, { includeAuth: false, credentials: "include" });
   }
 }
 
