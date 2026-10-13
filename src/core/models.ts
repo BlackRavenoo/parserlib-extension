@@ -1,7 +1,11 @@
 export interface TextChunk {
   kind: "text";
   text: string;
+  styles: TextStyle[];
+  startsParagraph: boolean;
 }
+
+export type TextStyle = "emphasis" | "strong";
 
 export interface ImageChunk {
   kind: "image";

@@ -1,4 +1,5 @@
 import type { Book, Exporter } from "./types";
+import type { TextChunk, TextStyle } from "../core/models";
 
 const PAGE_WIDTH = 1240;
 const PAGE_HEIGHT = 1754;
@@ -36,6 +37,109 @@ function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: num
     lines.push(line);
   }
 
+  return lines;
+}
+
+interface StyledText {
+  text: string;
+  styles: TextStyle[];
+}
+
+interface StyledWord {
+  segments: StyledText[];
+  spaceBefore: StyledText[];
+}
+
+type StyledToken = StyledWord | { newline: true };
+
+function fontFor(styles: TextStyle[], fontSize: number): string {
+  const parts: string[] = [];
+  if (styles.includes("emphasis")) parts.push("italic");
+  if (styles.includes("strong")) parts.push("bold");
+  parts.push(`${fontSize}px Arial, sans-serif`);
+  return parts.join(" ");
+}
+
+function measureStyled(context: CanvasRenderingContext2D, segments: StyledText[], fontSize: number): number {
+  return segments.reduce((width, segment) => {
+    context.font = fontFor(segment.styles, fontSize);
+    return width + context.measureText(segment.text).width;
+  }, 0);
+}
+
+function mergeStyledText(target: StyledText[], text: string, styles: TextStyle[]): void {
+  const last = target[target.length - 1];
+  if (last && last.styles.join("|") === styles.join("|")) last.text += text;
+  else target.push({ text, styles });
+}
+
+function styledTokens(chunks: TextChunk[]): StyledToken[] {
+  const tokens: StyledToken[] = [];
+  let currentWord: StyledText[] = [];
+  let spaceBefore: StyledText[] = [];
+
+  const flushWord = () => {
+    if (currentWord.length === 0) return;
+    tokens.push({ segments: currentWord, spaceBefore });
+    currentWord = [];
+    spaceBefore = [];
+  };
+
+  for (const chunk of chunks) {
+    const pieces = chunk.text.match(/\n|[^\S\n]+|[^\s]+/gu) ?? [];
+    for (const piece of pieces) {
+      if (piece === "\n") {
+        flushWord();
+        spaceBefore = [];
+        tokens.push({ newline: true });
+      } else if (/^\s+$/u.test(piece)) {
+        flushWord();
+        mergeStyledText(spaceBefore, piece, chunk.styles);
+      } else {
+        mergeStyledText(currentWord, piece, chunk.styles);
+      }
+    }
+  }
+  flushWord();
+  return tokens;
+}
+
+function wrapStyledText(
+  context: CanvasRenderingContext2D,
+  chunks: TextChunk[],
+  maxWidth: number,
+  fontSize: number
+): StyledText[][] {
+  const lines: StyledText[][] = [];
+  let line: StyledText[] = [];
+  let lineWidth = 0;
+
+  const flushLine = () => {
+    lines.push(line);
+    line = [];
+    lineWidth = 0;
+  };
+
+  for (const token of styledTokens(chunks)) {
+    if ("newline" in token) {
+      flushLine();
+      continue;
+    }
+
+    const wordWidth = measureStyled(context, token.segments, fontSize);
+    const spaceWidth = line.length ? measureStyled(context, token.spaceBefore, fontSize) : 0;
+    if (line.length > 0 && lineWidth + spaceWidth + wordWidth > maxWidth) {
+      flushLine();
+    } else if (spaceWidth > 0) {
+      for (const space of token.spaceBefore) mergeStyledText(line, space.text, space.styles);
+      lineWidth += spaceWidth;
+    }
+
+    for (const segment of token.segments) mergeStyledText(line, segment.text, segment.styles);
+    lineWidth += wordWidth;
+  }
+
+  if (line.length > 0 || lines.length === 0) flushLine();
   return lines;
 }
 
@@ -161,6 +265,21 @@ const pdfExporter: Exporter = {
       y += gapAfter;
     };
 
+    const drawStyledText = async (paragraph: TextChunk[]) => {
+      const lines = wrapStyledText(context!, paragraph, PAGE_WIDTH - MARGIN * 2, 26);
+      for (const line of lines) {
+        await ensureSpace(LINE_HEIGHT);
+        let x = MARGIN;
+        for (const segment of line) {
+          context!.font = fontFor(segment.styles, 26);
+          context!.fillText(segment.text, x, y);
+          x += context!.measureText(segment.text).width;
+        }
+        y += LINE_HEIGHT;
+      }
+      y += 24;
+    };
+
     if (book.coverImage) {
       const cover = await createImageBitmap(
         new Blob([book.coverImage.data.slice().buffer as ArrayBuffer], { type: book.coverImage.mime })
@@ -179,9 +298,18 @@ const pdfExporter: Exporter = {
     for (const chapter of book.chapters) {
       await drawText(chapter.title, "bold 40px Arial, sans-serif", 52, 28);
 
-      for (const chunk of chapter.chunks) {
+      for (let chunkIndex = 0; chunkIndex < chapter.chunks.length;) {
+        const chunk = chapter.chunks[chunkIndex]!;
         if (chunk.kind === "text") {
-          await drawText(chunk.text, "26px Arial, sans-serif", LINE_HEIGHT, 24);
+          const paragraph = [chunk];
+          chunkIndex++;
+          while (chunkIndex < chapter.chunks.length) {
+            const next = chapter.chunks[chunkIndex]!;
+            if (next.kind !== "text" || next.startsParagraph) break;
+            paragraph.push(next);
+            chunkIndex++;
+          }
+          await drawStyledText(paragraph);
           continue;
         }
 
@@ -198,6 +326,7 @@ const pdfExporter: Exporter = {
         context!.drawImage(image, (PAGE_WIDTH - width) / 2, y, width, height);
         image.close();
         y += height + 24;
+        chunkIndex++;
       }
     }
 

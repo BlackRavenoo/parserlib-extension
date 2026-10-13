@@ -1,5 +1,6 @@
 import type { Book, Exporter } from "./types";
 import { escapeXml } from "./types";
+import { renderTextChunk } from "./text";
 
 function extFromMime(mime: string): string {
   const subtype = (mime.split(";")[0] ?? "").split("/")[1]?.trim() ?? "";
@@ -41,13 +42,22 @@ const epubExporter: Exporter = {
     book.chapters.forEach((chapter, i) => {
       const fileName = `chapter_${chapter.id}.xhtml`;
       const parts: string[] = [];
+      let paragraph: Extract<(typeof chapter.chunks)[number], { kind: "text" }>[] = [];
+      const flushParagraph = () => {
+        if (paragraph.length > 0) {
+          parts.push(`<p>${paragraph.map((chunk) => renderTextChunk(chunk, "xhtml")).join("")}</p>`);
+          paragraph = [];
+        }
+      };
 
       chapter.chunks.forEach((chunk, chunkIndex) => {
         if (chunk.kind === "text") {
-          parts.push(`<p>${escapeXml(chunk.text)}</p>`);
+          if (chunk.startsParagraph) flushParagraph();
+          paragraph.push(chunk);
           return;
         }
 
+        flushParagraph();
         const imgFileName = `images/img_${chapter.id}_${chunkIndex}.jpg`;
         const imgId = `img-${chapter.id}-${chunkIndex}`;
 
@@ -58,6 +68,7 @@ const epubExporter: Exporter = {
         parts.push(`<img src="${imgFileName}" alt="page ${chunkIndex + 1}"/>`);
       });
 
+      flushParagraph();
       const xhtml = `<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>

@@ -1,5 +1,5 @@
 import type { ChapterContent, ChapterRef, Source, TitleMeta } from "./types";
-import type { DataChunk } from "../core/models";
+import type { DataChunk, TextStyle } from "../core/models";
 import { CdnlibsApi, chapterKey, chapterTitle } from "./cdnlibs";
 import type { SiteHeaders } from "./cdnlibs";
 import { libSocialTitle, libSocialToken, libSocialRequestPatch } from "./libsocial";
@@ -29,14 +29,97 @@ function absolute(src: string): string {
   }
 }
 
+interface TextRun {
+  text: string;
+  styles: TextStyle[];
+}
+
+function addTextRun(runs: TextRun[], text: string, styles: TextStyle[]): void {
+  if (!text) return;
+  const previous = runs[runs.length - 1];
+  if (previous && previous.styles.join("|") === styles.join("|")) {
+    previous.text += text;
+  } else {
+    runs.push({ text, styles });
+  }
+}
+
+function trimTextRuns(runs: TextRun[]): TextRun[] {
+  const result = runs.filter((run) => run.text.length > 0).map((run) => ({ ...run }));
+  const first = result[0];
+  const last = result[result.length - 1];
+  if (first) first.text = first.text.trimStart();
+  if (last) last.text = last.text.trimEnd();
+  return result.filter((run) => run.text.length > 0);
+}
+
+function htmlStyles(element: Element, inherited: TextStyle[]): TextStyle[] {
+  const styles = new Set(inherited);
+  const tag = element.tagName.toLowerCase();
+  if (tag === "em" || tag === "i") styles.add("emphasis");
+  if (tag === "strong" || tag === "b") styles.add("strong");
+  return [...styles];
+}
+
+function collectHtmlText(node: Node, runs: TextRun[], inherited: TextStyle[] = []): void {
+  if (node.nodeType === Node.TEXT_NODE) {
+    addTextRun(runs, node.nodeValue ?? "", inherited);
+    return;
+  }
+
+  if (node instanceof HTMLBRElement) {
+    addTextRun(runs, "\n", inherited);
+    return;
+  }
+
+  const styles = node instanceof Element ? htmlStyles(node, inherited) : inherited;
+  for (const child of node.childNodes) collectHtmlText(child, runs, styles);
+}
+
+function textChunksFromRuns(runs: TextRun[]): DataChunk[] {
+  return trimTextRuns(runs).map((run, index) => ({
+    kind: "text",
+    text: run.text,
+    styles: run.styles,
+    startsParagraph: index === 0,
+  }));
+}
+
+function parseProseMirrorStyles(marks: any, inherited: TextStyle[]): TextStyle[] {
+  const styles = new Set(inherited);
+  if (!Array.isArray(marks)) return [...styles];
+  for (const mark of marks) {
+    const type = mark?.type;
+    if (type === "em" || type === "italic") styles.add("emphasis");
+    if (type === "strong" || type === "bold") styles.add("strong");
+  }
+  return [...styles];
+}
+
+function collectProseMirrorText(node: any, runs: TextRun[], inherited: TextStyle[] = []): void {
+  const styles = parseProseMirrorStyles(node?.marks, inherited);
+  if (node?.type === "text") {
+    addTextRun(runs, typeof node.text === "string" ? node.text : "", styles);
+    return;
+  }
+  if (node?.type === "hardBreak") {
+    addTextRun(runs, "\n", styles);
+    return;
+  }
+
+  const content = Array.isArray(node?.content) ? node.content : [];
+  for (const child of content) collectProseMirrorText(child, runs, styles);
+}
+
 async function parseHtmlToChunks(html: string): Promise<DataChunk[]> {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const chunks: DataChunk[] = [];
 
   for (const node of doc.body.querySelectorAll("p, img")) {
     if (node instanceof HTMLParagraphElement) {
-      const text = (node.textContent ?? "").trim();
-      if (text) chunks.push({ kind: "text", text });
+      const runs: TextRun[] = [];
+      collectHtmlText(node, runs);
+      chunks.push(...textChunksFromRuns(runs));
     } else if (node instanceof HTMLImageElement) {
       const src = node.getAttribute("src") ?? "";
       if (!src) continue;
@@ -48,16 +131,6 @@ async function parseHtmlToChunks(html: string): Promise<DataChunk[]> {
   return chunks;
 }
 
-function extractProseMirrorText(node: any): string {
-  const type = node?.type;
-
-  if (type === "text") return typeof node.text === "string" ? node.text : "";
-  if (type === "hardBreak") return "\n";
-
-  const content = Array.isArray(node?.content) ? node.content : [];
-  return content.map(extractProseMirrorText).join("");
-}
-
 async function parseProseMirrorToChunks(
   doc: any,
   attachments: Map<string, string>
@@ -67,8 +140,9 @@ async function parseProseMirrorToChunks(
 
   for (const node of content) {
     if (node?.type === "paragraph") {
-      const text = extractProseMirrorText(node).trim();
-      if (text) chunks.push({ kind: "text", text });
+      const runs: TextRun[] = [];
+      collectProseMirrorText(node, runs);
+      chunks.push(...textChunksFromRuns(runs));
     } else if (node?.type === "image") {
       const images = Array.isArray(node?.attrs?.images) ? node.attrs.images : [];
       for (const item of images) {

@@ -1,5 +1,6 @@
 import type { Book, Exporter } from "./types";
 import { escapeXml } from "./types";
+import { renderTextChunk } from "./text";
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -31,13 +32,22 @@ const fb2Exporter: Exporter = {
 
     for (const chapter of book.chapters) {
       const section: string[] = [`<title><p>${escapeXml(chapter.title)}</p></title>`];
+      let paragraph: Extract<(typeof chapter.chunks)[number], { kind: "text" }>[] = [];
+      const flushParagraph = () => {
+        if (paragraph.length > 0) {
+          section.push(`<p>${paragraph.map((chunk) => renderTextChunk(chunk, "fb2")).join("")}</p>`);
+          paragraph = [];
+        }
+      };
 
       chapter.chunks.forEach((chunk, chunkIndex) => {
         if (chunk.kind === "text") {
-          section.push(`<p>${escapeXml(chunk.text)}</p>`);
+          if (chunk.startsParagraph) flushParagraph();
+          paragraph.push(chunk);
           return;
         }
 
+        flushParagraph();
         const id = `img_${chapter.id}_${chunkIndex}`;
         section.push(`<image l:href="#${id}"/>`);
         binaries.push(
@@ -45,6 +55,7 @@ const fb2Exporter: Exporter = {
         );
       });
 
+      flushParagraph();
       body.push(`<section>${section.join("\n")}</section>`);
     }
 
