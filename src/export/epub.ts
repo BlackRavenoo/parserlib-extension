@@ -45,7 +45,9 @@ const epubExporter: Exporter = {
       let paragraph: Extract<(typeof chapter.chunks)[number], { kind: "text" }>[] = [];
       const flushParagraph = () => {
         if (paragraph.length > 0) {
-          parts.push(`<p>${paragraph.map((chunk) => renderTextChunk(chunk, "xhtml")).join("")}</p>`);
+          const headingLevel = paragraph[0]?.headingLevel;
+          const tag = headingLevel ? `h${headingLevel}` : "p";
+          parts.push(`<${tag}>${paragraph.map((chunk) => renderTextChunk(chunk, "xhtml")).join("")}</${tag}>`);
           paragraph = [];
         }
       };

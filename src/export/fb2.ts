@@ -35,7 +35,10 @@ const fb2Exporter: Exporter = {
       let paragraph: Extract<(typeof chapter.chunks)[number], { kind: "text" }>[] = [];
       const flushParagraph = () => {
         if (paragraph.length > 0) {
-          section.push(`<p>${paragraph.map((chunk) => renderTextChunk(chunk, "fb2")).join("")}</p>`);
+          const text = paragraph.map((chunk) => renderTextChunk(chunk, "fb2")).join("");
+          section.push(
+            paragraph[0]?.headingLevel ? `<subtitle><p>${text}</p></subtitle>` : `<p>${text}</p>`
+          );
           paragraph = [];
         }
       };

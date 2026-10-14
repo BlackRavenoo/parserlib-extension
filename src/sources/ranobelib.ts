@@ -76,13 +76,20 @@ function collectHtmlText(node: Node, runs: TextRun[], inherited: TextStyle[] = [
   for (const child of node.childNodes) collectHtmlText(child, runs, styles);
 }
 
-function textChunksFromRuns(runs: TextRun[]): DataChunk[] {
+function textChunksFromRuns(runs: TextRun[], headingLevel?: number): DataChunk[] {
   return trimTextRuns(runs).map((run, index) => ({
     kind: "text",
     text: run.text,
     styles: run.styles,
     startsParagraph: index === 0,
+    ...(headingLevel !== undefined && { headingLevel }),
   }));
+}
+
+function validHeadingLevel(level: unknown): number | undefined {
+  return typeof level === "number" && Number.isInteger(level) && level >= 1 && level <= 6
+    ? level
+    : undefined;
 }
 
 function parseProseMirrorStyles(marks: any, inherited: TextStyle[]): TextStyle[] {
@@ -115,11 +122,15 @@ async function parseHtmlToChunks(html: string): Promise<DataChunk[]> {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const chunks: DataChunk[] = [];
 
-  for (const node of doc.body.querySelectorAll("p, img")) {
+  for (const node of doc.body.querySelectorAll("p, h1, h2, h3, h4, h5, h6, img")) {
     if (node instanceof HTMLParagraphElement) {
       const runs: TextRun[] = [];
       collectHtmlText(node, runs);
       chunks.push(...textChunksFromRuns(runs));
+    } else if (node instanceof HTMLHeadingElement) {
+      const runs: TextRun[] = [];
+      collectHtmlText(node, runs);
+      chunks.push(...textChunksFromRuns(runs, Number(node.tagName.slice(1))));
     } else if (node instanceof HTMLImageElement) {
       const src = node.getAttribute("src") ?? "";
       if (!src) continue;
@@ -143,6 +154,10 @@ async function parseProseMirrorToChunks(
       const runs: TextRun[] = [];
       collectProseMirrorText(node, runs);
       chunks.push(...textChunksFromRuns(runs));
+    } else if (node?.type === "heading") {
+      const runs: TextRun[] = [];
+      collectProseMirrorText(node, runs);
+      chunks.push(...textChunksFromRuns(runs, validHeadingLevel(node?.attrs?.level)));
     } else if (node?.type === "image") {
       const images = Array.isArray(node?.attrs?.images) ? node.attrs.images : [];
       for (const item of images) {

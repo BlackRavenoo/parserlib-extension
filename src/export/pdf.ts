@@ -266,18 +266,21 @@ const pdfExporter: Exporter = {
     };
 
     const drawStyledText = async (paragraph: TextChunk[]) => {
-      const lines = wrapStyledText(context!, paragraph, PAGE_WIDTH - MARGIN * 2, 26);
+      const headingLevel = paragraph[0]?.headingLevel;
+      const fontSize = headingLevel ? Math.max(28, 40 - headingLevel * 2) : 26;
+      const lineHeight = headingLevel ? fontSize + 16 : LINE_HEIGHT;
+      const lines = wrapStyledText(context!, paragraph, PAGE_WIDTH - MARGIN * 2, fontSize);
       for (const line of lines) {
-        await ensureSpace(LINE_HEIGHT);
+        await ensureSpace(lineHeight);
         let x = MARGIN;
         for (const segment of line) {
-          context!.font = fontFor(segment.styles, 26);
+          context!.font = fontFor(headingLevel ? [...segment.styles, "strong"] : segment.styles, fontSize);
           context!.fillText(segment.text, x, y);
           x += context!.measureText(segment.text).width;
         }
-        y += LINE_HEIGHT;
+        y += lineHeight;
       }
-      y += 24;
+      y += headingLevel ? 16 : 24;
     };
 
     if (book.coverImage) {

@@ -3,6 +3,7 @@ export interface TextChunk {
   text: string;
   styles: TextStyle[];
   startsParagraph: boolean;
+  headingLevel?: number;
 }
 
 export type TextStyle = "emphasis" | "strong";
