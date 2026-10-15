@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node build.mjs",
     "build:watch": "node build.mjs --watch",
+    "test": "node scripts/test.mjs",
     "zip": "node build.mjs --zip"
   },
   "devDependencies": {

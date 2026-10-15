@@ -142,7 +142,7 @@ async function parseHtmlToChunks(html: string): Promise<DataChunk[]> {
   return chunks;
 }
 
-async function parseProseMirrorToChunks(
+export async function parseProseMirrorToChunks(
   doc: any,
   attachments: Map<string, string>
 ): Promise<DataChunk[]> {
