@@ -16,6 +16,8 @@ export interface Book {
 export interface Exporter {
   readonly extension: "fb2" | "epub" | "pdf";
   export(book: Book): Promise<Blob>;
+  inspectExisting?(file: Blob, title: string): Promise<Set<number>>;
+  append?(book: Book, file: Blob): Promise<Blob>;
 }
 
 export function sanitizeFilename(name: string, replacement = "_"): string {

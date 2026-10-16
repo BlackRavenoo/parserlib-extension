@@ -1,8 +1,9 @@
 import { ext } from "../lib/browser";
 import { patchApiHeaders } from "../lib/headers";
-import { storeJobPlan } from "../lib/job-plan";
+import { removeJobPlan, storeJobPlan } from "../lib/job-plan";
+import { removeAppendFile, storeAppendFile } from "../lib/append-file";
 import { getPopupData, storePopupData, tokenFingerprint } from "../lib/popup-cache";
-import { listFormats } from "../export/registry";
+import { getFormat, listFormats } from "../export/registry";
 import { getSourceByUrl, resolveKeyByUrl } from "../sources/registry";
 import { readFromTab } from "../lib/token";
 import type { ChapterRef, TitleMeta } from "../sources/types";
@@ -15,6 +16,10 @@ const statusEl = document.getElementById("status") as HTMLDivElement;
 const fromInput = document.getElementById("range-from") as HTMLSelectElement;
 const toInput = document.getElementById("range-to") as HTMLSelectElement;
 const chapterCountEl = document.getElementById("chapter-count") as HTMLParagraphElement;
+const appendOption = document.getElementById("append-option") as HTMLDivElement;
+const appendEnabled = document.getElementById("append-enabled") as HTMLInputElement;
+const appendFileRow = document.getElementById("append-file-row") as HTMLDivElement;
+const appendFileInput = document.getElementById("append-file") as HTMLInputElement;
 
 const SOURCE_LABELS: Record<string, string> = {
   mangalib: "MangaLib",
@@ -23,10 +28,24 @@ const SOURCE_LABELS: Record<string, string> = {
 
 for (const format of listFormats()) {
   const option = document.createElement("option");
-  option.value = format;
-  option.textContent = format.toUpperCase();
+  option.value = format.key;
+  option.textContent = format.key.toUpperCase();
   formatSelect.append(option);
 }
+
+function updateAppendControls(): void {
+  const format = getFormat(formatSelect.value);
+  appendOption.hidden = !format.supportsAppend;
+  if (!format.supportsAppend) appendEnabled.checked = false;
+  appendFileRow.hidden = !appendEnabled.checked;
+  appendFileInput.disabled = !appendEnabled.checked;
+  appendFileInput.required = appendEnabled.checked;
+  startButton.textContent = appendEnabled.checked ? "Докачать" : "Скачать";
+}
+
+formatSelect.addEventListener("change", updateAppendControls);
+appendEnabled.addEventListener("change", updateAppendControls);
+updateAppendControls();
 
 let currentUrl: string | null = null;
 let currentKey: string | null = null;
@@ -141,21 +160,35 @@ form.addEventListener("submit", async (event) => {
     return;
   }
   const selected = currentChapters.slice(fromIndex, toIndex + 1);
+  const format = getFormat(formatSelect.value);
+  const appendFile = format.supportsAppend && appendEnabled.checked ? appendFileInput.files?.[0] : null;
+  if (appendEnabled.checked && (!appendFile || !appendFile.name.toLowerCase().endsWith(`.${format.extension}`))) {
+    showError("Выберите существующий файл.");
+    return;
+  }
 
   startButton.disabled = true;
   statusEl.classList.remove("error");
   statusEl.textContent = "Готовлю загрузку…";
+  let appendFileId: string | undefined;
+  let planId: string | undefined;
   try {
-    const planId = await storeJobPlan({
+    if (appendFile) appendFileId = await storeAppendFile(appendFile);
+    planId = await storeJobPlan({
       sourceKey: currentKey,
       token: currentToken,
       format: formatSelect.value,
       meta: currentMeta,
       chapters: selected,
+      ...(appendFileId && { appendFileId }),
     });
     await ext.tabs.create({ url: chrome.runtime.getURL(`job/index.html?plan=${encodeURIComponent(planId)}`) });
     window.close();
   } catch (error) {
+    await Promise.allSettled([
+      ...(appendFileId ? [removeAppendFile(appendFileId)] : []),
+      ...(planId ? [removeJobPlan(planId)] : []),
+    ]);
     showError(error);
     startButton.disabled = false;
   }

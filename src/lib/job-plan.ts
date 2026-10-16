@@ -7,6 +7,7 @@ export interface JobPlan {
   format: string;
   meta: TitleMeta;
   chapters: ChapterRef[];
+  appendFileId?: string;
 }
 
 const PLAN_KEY_PREFIX = "job-plan:";
@@ -24,4 +25,8 @@ export async function takeJobPlan(id: string): Promise<JobPlan | null> {
   const value = stored[key];
   if (!value || typeof value !== "object") return null;
   return value as JobPlan;
+}
+
+export async function removeJobPlan(id: string): Promise<void> {
+  await ext.storage.session.remove(`${PLAN_KEY_PREFIX}${id}`);
 }

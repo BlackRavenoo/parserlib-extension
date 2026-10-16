@@ -6,7 +6,7 @@
   <style>
     body { font: 13px system-ui, sans-serif; width: 340px; padding: 12px; }
     label { display: block; margin-top: 10px; font-size: 12px; color: #555; }
-    select, button { width: 100%; box-sizing: border-box; padding: 6px; margin-top: 4px; }
+    select, button, input[type="file"] { width: 100%; box-sizing: border-box; padding: 6px; margin-top: 4px; }
     button { margin-top: 12px; cursor: pointer; }
     button:disabled { cursor: default; opacity: 0.5; }
     #source { margin: 4px 0 8px; overflow-wrap: anywhere; }
@@ -14,6 +14,9 @@
     #status { color: #555; white-space: pre-wrap; }
     #status.error { color: #b00020; }
     #chapter-count { margin: 4px 0 0; color: #666; font-size: 12px; }
+    #append-option .checkbox { display: flex; align-items: center; gap: 6px; }
+    #append-option .checkbox input { margin: 0; }
+    #append-file-row p { margin: 4px 0 0; color: #666; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -22,6 +25,16 @@
   <form id="settings-form" hidden>
     <label for="format">Формат</label>
     <select id="format"></select>
+    <div id="append-option" hidden>
+      <label class="checkbox" for="append-enabled">
+        <input id="append-enabled" type="checkbox" />
+        Докачать существующий файл
+      </label>
+      <div id="append-file-row" hidden>
+        <label for="append-file">Файл</label>
+        <input id="append-file" type="file" accept=".epub,application/epub+zip" />
+      </div>
+    </div>
     <div id="range">
       <label for="range-from">С главы
         <select id="range-from" required disabled></select>

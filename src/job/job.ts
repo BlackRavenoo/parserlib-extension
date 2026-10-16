@@ -1,7 +1,9 @@
 import { ext } from "../lib/browser";
 import { takeJobPlan } from "../lib/job-plan";
+import { takeAppendFile } from "../lib/append-file";
+import { chaptersToAppend } from "../lib/append-plan";
 import { getSource } from "../sources/registry";
-import { getExporter } from "../export/registry";
+import { getExporter, getFormat } from "../export/registry";
 import type { Book, BookChapter } from "../export/types";
 import { sanitizeFilename } from "../export/types";
 
@@ -26,17 +28,36 @@ async function run(planId: string): Promise<void> {
   const plan = await takeJobPlan(planId);
   if (!plan) throw new Error("Не найдены параметры загрузки. Вернитесь в popup и запустите её снова.");
 
-  const source = await getSource(plan.sourceKey);
   titleEl.textContent = plan.meta.title;
+  const source = await getSource(plan.sourceKey);
+  const format = getFormat(plan.format);
+  const exporter = await getExporter(plan.format);
   setStatus("Подготавливаю загрузку…");
   barEl.hidden = false;
+
+  let appendFile: File | undefined;
+  let chapters = plan.chapters;
+  if (plan.appendFileId) {
+    if (!format.supportsAppend || !exporter.inspectExisting || !exporter.append) {
+      throw new Error(`Формат ${format.key.toUpperCase()} не поддерживает докачку.`);
+    }
+    appendFile = await takeAppendFile(plan.appendFileId);
+    const existingIds = await exporter.inspectExisting(appendFile, plan.meta.title);
+    chapters = chaptersToAppend(plan.chapters, existingIds);
+    if (chapters.length === 0) {
+      barEl.max = plan.chapters.length;
+      barEl.value = plan.chapters.length;
+      setStatus("Все выбранные главы уже есть в EPUB. Новый файл не требуется.");
+      return;
+    }
+  }
 
   const bookChapters: BookChapter[] = [];
   let failure: Error | null = null;
 
-  for (let i = 0; i < plan.chapters.length; i++) {
-    const chapterRef = plan.chapters[i]!;
-    setStatus(`Скачиваю главы: ${i + 1}/${plan.chapters.length}`, i, plan.chapters.length);
+  for (let i = 0; i < chapters.length; i++) {
+    const chapterRef = chapters[i]!;
+    setStatus(`Скачиваю главы: ${i + 1}/${chapters.length}`, i, chapters.length);
 
     try {
       const content = await source.fetchChapter(chapterRef, plan.token);
@@ -49,20 +70,24 @@ async function run(planId: string): Promise<void> {
   }
 
   if (failure && bookChapters.length === 0) {
-    throw new Error(`Первая глава не скачалась, сохранять нечего. Причина: ${failure.message}`);
+    throw new Error(
+      appendFile
+        ? `Первая новая глава не скачалась, исходный EPUB не изменён. Причина: ${failure.message}`
+        : `Первая глава не скачалась, сохранять нечего. Причина: ${failure.message}`
+    );
   }
 
   const downloaded = bookChapters.length;
   setStatus(
     failure
-      ? `Скачано глав: ${downloaded} из ${plan.chapters.length}. Собираю файл…`
+      ? `Скачано глав: ${downloaded} из ${chapters.length}. Собираю файл…`
       : "Собираю файл…",
     downloaded,
-    plan.chapters.length
+    chapters.length
   );
 
   let coverImage: { data: Uint8Array; mime: string } | undefined;
-  if (plan.meta.coverUrl) {
+  if (!appendFile && plan.meta.coverUrl) {
     try {
       const res = await fetch(plan.meta.coverUrl);
       if (res.ok) {
@@ -84,8 +109,7 @@ async function run(planId: string): Promise<void> {
     coverImage,
     chapters: bookChapters,
   };
-  const exporter = await getExporter(plan.format);
-  const blob = await exporter.export(book);
+  const blob = appendFile ? await exporter.append!(book, appendFile) : await exporter.export(book);
 
   const objectUrl = URL.createObjectURL(blob);
   try {
@@ -93,23 +117,27 @@ async function run(planId: string): Promise<void> {
       url: objectUrl,
       filename: `${sanitizeFilename(plan.meta.title)}.${exporter.extension}`,
       saveAs: false,
+      conflictAction: "uniquify",
     });
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
 
-  barEl.max = plan.chapters.length;
+  barEl.max = chapters.length;
   barEl.value = downloaded;
 
   if (failure) {
     showError(
-      `Случилась ошибка. Файл сохранён с главами 1–${downloaded} из ${plan.chapters.length}. ` +
-        `На главе ${downloaded + 1} загрузка остановилась: ${failure.message}\n`
+      appendFile
+        ? `Случилась ошибка. Файл сохранён с ${downloaded} новыми главами из ${chapters.length}. ` +
+          `На главе ${downloaded + 1} загрузка остановилась: ${failure.message}\n`
+        : `Случилась ошибка. Файл сохранён с главами 1–${downloaded} из ${chapters.length}. ` +
+          `На главе ${downloaded + 1} загрузка остановилась: ${failure.message}\n`
     );
     return;
   }
 
-  setStatus("Готово, файл сохранён. Вкладку можно закрыть.", plan.chapters.length, plan.chapters.length);
+  setStatus("Готово, файл сохранён. Вкладку можно закрыть.", chapters.length, chapters.length);
 }
 
 const planId = new URLSearchParams(location.search).get("plan") ?? "";
