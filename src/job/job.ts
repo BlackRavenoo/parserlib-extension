@@ -47,7 +47,7 @@ async function run(planId: string): Promise<void> {
     if (chapters.length === 0) {
       barEl.max = plan.chapters.length;
       barEl.value = plan.chapters.length;
-      setStatus("Все выбранные главы уже есть в EPUB. Новый файл не требуется.");
+      setStatus("Все выбранные главы уже есть в файле. Новый файл не требуется.");
       return;
     }
   }
@@ -72,7 +72,7 @@ async function run(planId: string): Promise<void> {
   if (failure && bookChapters.length === 0) {
     throw new Error(
       appendFile
-        ? `Первая новая глава не скачалась, исходный EPUB не изменён. Причина: ${failure.message}`
+        ? `Первая новая глава не скачалась, исходный файл не изменён. Причина: ${failure.message}`
         : `Первая глава не скачалась, сохранять нечего. Причина: ${failure.message}`
     );
   }
