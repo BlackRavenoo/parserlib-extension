@@ -22,6 +22,7 @@ export interface ChapterContent {
 export interface Source {
   readonly key: string;
   readonly kind: "manga" | "novel";
+  readonly requiresAuth?: boolean;
 
   titleSlug(url: string): string | null;
 

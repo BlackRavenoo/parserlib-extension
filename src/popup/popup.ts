@@ -23,6 +23,7 @@ const appendFileInput = document.getElementById("append-file") as HTMLInputEleme
 
 const SOURCE_LABELS: Record<string, string> = {
   mangalib: "MangaLib",
+  hentailib: "HentaiLib",
   ranobelib: "RanobeLib",
 };
 
@@ -108,8 +109,11 @@ async function initialize(): Promise<void> {
     readFromTab(tab.id, () => String(performance.timeOrigin)),
   ]);
   sourceEl.textContent = domTitle ? `${label}: ${domTitle}` : `${label}: загружаю название…`;
-  form.hidden = false;
   currentToken = token;
+  if (source.requiresAuth && !token) {
+    throw new Error(`Для ${label} нужна авторизация. Войдите в аккаунт на сайте и откройте popup снова.`);
+  }
+  form.hidden = false;
 
   const fingerprint = await tokenFingerprint(token);
   const identity = documentTimeOrigin

@@ -4,6 +4,7 @@ type SourceLoader = () => Promise<{ default: Source }>;
 
 const loaders: Record<string, SourceLoader> = {
   mangalib: () => import("./mangalib"),
+  hentailib: () => import("./hentailib"),
   ranobelib: () => import("./ranobelib"),
   // To add a new source:
   //   1. create ./<key>.ts implementing Source;
@@ -13,6 +14,7 @@ const loaders: Record<string, SourceLoader> = {
 const hostToKey: Record<string, string> = {
   "mangalib.me": "mangalib",
   "mangalib.org": "mangalib",
+  "hentailib.me": "hentailib",
   "ranobelib.me": "ranobelib",
 };
 

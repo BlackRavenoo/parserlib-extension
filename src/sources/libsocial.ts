@@ -1,14 +1,17 @@
 import type { RequestPatch } from "../lib/headers";
 
-const LIBSOCIAL_DOMAINS = ["mangalib.me", "mangalib.org", "ranobelib.me"];
+const LIBSOCIAL_DOMAINS = ["mangalib.me", "mangalib.org", "hentailib.me", "ranobelib.me"];
 
 export function libSocialRequestPatch(pageUrl: string): RequestPatch {
   const page = new URL(pageUrl);
   const origin = page.origin;
   const isRanobeLib = page.hostname === "ranobelib.me" || page.hostname.endsWith(".ranobelib.me");
+  const isHentaiLib = page.hostname === "hentailib.me" || page.hostname.endsWith(".hentailib.me");
 
   return {
-    requestDomains: ["api.cdnlibs.org", "cover.cdnlibs.org"],
+    requestDomains: isHentaiLib
+      ? ["hapi.hentaicdn.org", "cover.hentaicdn.org"]
+      : ["api.cdnlibs.org", "cover.cdnlibs.org"],
     excludedInitiatorDomains: LIBSOCIAL_DOMAINS,
     headers: [
       { header: "referer", operation: "set", value: `${origin}/` },
@@ -28,6 +31,23 @@ export function libSocialRequestPatch(pageUrl: string): RequestPatch {
             },
             { header: "referer", operation: "set", value: pageUrl },
             { header: "sec-fetch-site", operation: "set", value: "same-origin" },
+          ],
+        },
+      ],
+    }),
+    ...(isHentaiLib && {
+      additionalRules: [
+        {
+          requestDomains: ["img3h.hentaicdn.org"],
+          excludedInitiatorDomains: LIBSOCIAL_DOMAINS,
+          headers: [
+            {
+              header: "accept",
+              operation: "set",
+              value: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            },
+            { header: "referer", operation: "set", value: `${origin}/` },
+            { header: "sec-fetch-site", operation: "set", value: "cross-site" },
           ],
         },
       ],

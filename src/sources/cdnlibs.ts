@@ -25,6 +25,7 @@ const sharedHttp = new HttpClient(CDNLIBS_LIMITS);
 export interface SiteHeaders {
   siteId: string;
   service: string;
+  apiBaseUrl?: string;
 }
 
 export function buildHeaders(site: SiteHeaders): Record<string, string> {
@@ -60,6 +61,7 @@ export interface ChapterRow {
   number: string;
   number_secondary: string;
   name: string | null;
+  branch_id?: number | null;
 }
 
 export interface PageRow {
@@ -99,18 +101,20 @@ function apiError(what: string, slug: string, raw: unknown): Error {
 }
 
 export class CdnlibsApi {
+  constructor(private readonly http: HttpClient = sharedHttp) {}
+
   setAuth(token: string | null): void {
-    sharedHttp.setAuth(token);
+    this.http.setAuth(token);
   }
 
   private async getJson(url: string, site: SiteHeaders): Promise<any> {
     return JSON.parse(
-      new TextDecoder().decode(await sharedHttp.requestBytes(url, buildHeaders(site)))
+      new TextDecoder().decode(await this.http.requestBytes(url, buildHeaders(site)))
     );
   }
 
   async getManga(site: SiteHeaders, slug: string): Promise<MangaRow> {
-    const raw = await this.getJson(`${API_URL}/${slug}?fields[]=teams&fields[]=authors`, site);
+    const raw = await this.getJson(`${site.apiBaseUrl ?? API_URL}/${slug}?fields[]=teams&fields[]=authors`, site);
     if (!raw?.data || typeof raw.data !== "object") {
       throw apiError("Не удалось получить описание работы", slug, raw);
     }
@@ -118,7 +122,7 @@ export class CdnlibsApi {
   }
 
   async getChapters(site: SiteHeaders, slug: string): Promise<ChapterRow[]> {
-    const raw = await this.getJson(`${API_URL}/${slug}/chapters`, site);
+    const raw = await this.getJson(`${site.apiBaseUrl ?? API_URL}/${slug}/chapters`, site);
     if (!Array.isArray(raw?.data)) {
       throw apiError("Не удалось получить список глав", slug, raw);
     }
@@ -126,7 +130,7 @@ export class CdnlibsApi {
   }
 
   async getChapterData(site: SiteHeaders, slug: string, key: string): Promise<ChapterDataRow> {
-    const raw = await this.getJson(`${API_URL}/${slug}/chapter?${key}`, site);
+    const raw = await this.getJson(`${site.apiBaseUrl ?? API_URL}/${slug}/chapter?${key}`, site);
     if (!raw?.data || typeof raw.data !== "object") {
       throw apiError("Не удалось получить содержимое главы", slug, raw);
     }
@@ -139,7 +143,7 @@ export class CdnlibsApi {
 
     for (const host of IMAGE_HOSTS) {
       try {
-        return await sharedHttp.requestBinary(`${host}${cleanPath}`, buildHeaders(site));
+        return await this.http.requestBinary(`${host}${cleanPath}`, buildHeaders(site));
       } catch (err) {
         lastError = err;
         continue;
@@ -152,7 +156,7 @@ export class CdnlibsApi {
   }
 
   async getImageByUrl(url: string): Promise<{ data: Uint8Array; mime: string }> {
-    return sharedHttp.requestBinary(url, {}, { includeAuth: false, credentials: "include" });
+    return this.http.requestBinary(url, {}, { includeAuth: false, credentials: "include" });
   }
 }
 
@@ -162,8 +166,9 @@ export function chapterTitle(row: { volume: string; number: string; name: string
   return name ? `${base} - ${name}` : base;
 }
 
-export function chapterKey(row: { volume: string; number: string }): string {
-  return `number=${encodeURIComponent(asString(row.number))}&volume=${encodeURIComponent(
+export function chapterKey(row: { volume: string; number: string; branch_id?: number | null }): string {
+  const key = `number=${encodeURIComponent(asString(row.number))}&volume=${encodeURIComponent(
     asString(row.volume)
   )}`;
+  return row.branch_id == null ? key : `${key}&branch_id=${encodeURIComponent(String(row.branch_id))}`;
 }
