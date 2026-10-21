@@ -7,11 +7,14 @@
     "build": "node build.mjs",
     "build:watch": "node build.mjs --watch",
     "test": "node scripts/test.mjs",
+    "coverage": "c8 --all --src src --include \"src/**/*.ts\" --exclude-after-remap --reporter text --reporter lcov --reporter html --check-coverage --lines 30 tsx --test tests/*.test.ts",
     "zip": "node build.mjs --zip"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.1",
+    "c8": "^12.0.0",
     "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },
   "dependencies": {
