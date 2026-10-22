@@ -12,6 +12,8 @@ permissions:
 jobs:
   coverage:
     runs-on: ubuntu-latest
+    outputs:
+      report_available: ${{ steps.report.outputs.available }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -35,3 +37,65 @@ jobs:
           name: coverage-report
           path: coverage/
           if-no-files-found: ignore
+
+      - name: Check badge report
+        if: always()
+        id: report
+        run: |
+          if test -f coverage/coverage-summary.json; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  badge:
+    needs: coverage
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.coverage.outputs.report_available == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: coverage-badge
+      cancel-in-progress: false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Download coverage report
+        uses: actions/download-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage/
+
+      - name: Generate coverage badge
+        run: node scripts/coverage-badge.mjs coverage/coverage-summary.json "$RUNNER_TEMP/coverage.svg"
+
+      - name: Publish coverage badge
+        run: |
+          git fetch --no-tags origin master
+          if test "$(git rev-parse FETCH_HEAD)" != "$GITHUB_SHA"; then
+            echo "Skipping badge from an outdated master commit"
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --heads origin coverage-badge > /dev/null; then
+            git fetch --no-tags origin coverage-badge
+            git switch -c coverage-badge FETCH_HEAD
+          else
+            git switch --orphan coverage-badge
+          fi
+
+          cp "$RUNNER_TEMP/coverage.svg" coverage.svg
+          git add coverage.svg
+          if git diff --cached --quiet; then
+            echo "Coverage badge is unchanged"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update coverage badge"
+          git push origin HEAD:coverage-badge
