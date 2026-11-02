@@ -22,7 +22,6 @@ function openDatabase(): Promise<IDBDatabase> {
 function transactionCompleted(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? new Error("Ошибка сохранения файла."));
     transaction.onabort = () => reject(transaction.error ?? new Error("Сохранение файла прервано."));
   });
 }
