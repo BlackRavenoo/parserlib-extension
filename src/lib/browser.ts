@@ -35,7 +35,8 @@ export const ext = {
     queryActive: (): Promise<chrome.tabs.Tab | undefined> =>
       hasNativeBrowser
         ? browser!.tabs.query({ active: true, currentWindow: true }).then((t) => t[0])
-        : promisify((cb) => chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => cb(tabs[0]))),
+        : promisify<chrome.tabs.Tab[]>((cb) => chrome.tabs.query({ active: true, currentWindow: true }, cb))
+          .then((tabs) => tabs[0]),
     create: (options: chrome.tabs.CreateProperties): Promise<chrome.tabs.Tab> =>
       hasNativeBrowser
         ? browser!.tabs.create(options)
