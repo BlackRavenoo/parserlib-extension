@@ -31,7 +31,7 @@ export function sanitizeFilename(name: string, replacement = "_"): string {
   return sanitized || replacement;
 }
 
-const XML_ILLEGAL = /[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]/g;
+const XML_ILLEGAL = /[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]/gu;
 
 export function escapeXml(s: string): string {
   return s
