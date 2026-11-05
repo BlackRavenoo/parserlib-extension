@@ -146,6 +146,12 @@ export class HttpClient {
           headers: this.headersForRequest(headers, options.includeAuth !== false),
           credentials: options.credentials,
         });
+        if (res.status < 400) {
+          return {
+            data: new Uint8Array(await res.arrayBuffer()),
+            mime: res.headers.get("content-type") ?? "image/jpeg",
+          };
+        }
       } catch {
         if (serverRetries >= this.config.serverRetries) {
           throw new Error(`Сеть недоступна: ${url}`);
@@ -184,14 +190,7 @@ export class HttpClient {
         continue;
       }
 
-      if (res.status >= 400) {
-        throw new Error(`Запрос провалился со статусом ${res.status}: ${url}`);
-      }
-
-      return {
-        data: new Uint8Array(await res.arrayBuffer()),
-        mime: res.headers.get("content-type") ?? "image/jpeg",
-      };
+      throw new Error(`Запрос провалился со статусом ${res.status}: ${url}`);
     }
   }
 }

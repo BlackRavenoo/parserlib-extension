@@ -17,6 +17,15 @@ function response(status = 200, headers?: HeadersInit): Response {
   return new Response(Uint8Array.of(1, 2, 255).buffer, { status, headers });
 }
 
+function interruptedResponse(): Response {
+  return new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(Uint8Array.of(1));
+      controller.error(new TypeError("Передача ответа прервана"));
+    },
+  }));
+}
+
 function setup(t: TestContext, settings: HttpClientConfig = config) {
   t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 0 });
   const replies: Array<Response | Error> = [];
@@ -129,6 +138,34 @@ test("HTTP shares the server retry budget between transport failures and server 
   await rejected;
   assert.equal(calls.length, 2);
 
+  assert.deepEqual(await client.requestBytes(url, {}), Uint8Array.of(1, 2, 255));
+});
+
+test("HTTP retries interrupted response bodies before returning complete bytes", async (t) => {
+  const { client, replies, calls } = setup(t);
+  replies.push(interruptedResponse(), response(200, { "content-type": "image/png" }));
+  const pending = client.requestBinary(url, {}, { includeAuth: false, credentials: "include" });
+  await setImmediate();
+  assert.equal(calls.length, 1);
+  await advance(t, 999);
+  assert.equal(calls.length, 1);
+  await advance(t, 1);
+  assert.deepEqual(await pending, { data: Uint8Array.of(1, 2, 255), mime: "image/png" });
+  assert.deepEqual(calls.map(({ time }) => time), [0, 1000]);
+  assert.deepEqual(calls[1]?.init, { headers: {}, credentials: "include" });
+});
+
+test("HTTP body failures share the retry budget with transport and server errors", async (t) => {
+  const { client, replies, calls } = setup(t);
+  replies.push(new TypeError("Сетевой сбой"), response(503), interruptedResponse(), response());
+  const rejected = assert.rejects(client.requestBytes(url, {}), {
+    message: `Сеть недоступна: ${url}`,
+  });
+  await setImmediate();
+  await advance(t, 1000);
+  await advance(t, 2000);
+  await rejected;
+  assert.equal(calls.length, 3);
   assert.deepEqual(await client.requestBytes(url, {}), Uint8Array.of(1, 2, 255));
 });
 
