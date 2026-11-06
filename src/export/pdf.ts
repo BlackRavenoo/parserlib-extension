@@ -259,6 +259,7 @@ const pdfExporter: Exporter = {
       const lines = wrapText(context!, text, PAGE_WIDTH - MARGIN * 2);
       for (const line of lines) {
         await ensureSpace(lineHeight);
+        context!.font = font;
         context!.fillText(line, MARGIN, y);
         y += lineHeight;
       }
@@ -284,15 +285,25 @@ const pdfExporter: Exporter = {
     };
 
     if (book.coverImage) {
-      const cover = await createImageBitmap(
-        new Blob([book.coverImage.data.slice().buffer as ArrayBuffer], { type: book.coverImage.mime })
-      );
-      const scale = Math.min((PAGE_WIDTH - MARGIN * 2) / cover.width, (PAGE_HEIGHT - MARGIN * 2) / cover.height);
-      const width = cover.width * scale;
-      const height = cover.height * scale;
-      context.drawImage(cover, (PAGE_WIDTH - width) / 2, y, width, height);
-      cover.close();
-      y += height + 48;
+      let cover: ImageBitmap | undefined;
+      try {
+        cover = await createImageBitmap(
+          new Blob([book.coverImage.data.slice().buffer as ArrayBuffer], { type: book.coverImage.mime })
+        );
+      } catch (err) {
+        console.warn("[parserlib] обложка не распознана, PDF будет без неё", err);
+      }
+      if (cover) {
+        try {
+          const scale = Math.min((PAGE_WIDTH - MARGIN * 2) / cover.width, (PAGE_HEIGHT - MARGIN * 2) / cover.height);
+          const width = cover.width * scale;
+          const height = cover.height * scale;
+          context.drawImage(cover, (PAGE_WIDTH - width) / 2, y, width, height);
+          y += height + 48;
+        } finally {
+          cover.close();
+        }
+      }
     }
 
     await drawText(book.title, "bold 52px Arial, sans-serif", 64, 24);
