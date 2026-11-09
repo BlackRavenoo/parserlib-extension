@@ -57,6 +57,19 @@ test("MangaLib request patch sets the page origin for API and cover requests", (
   assert.equal(patch.additionalRules, undefined);
 });
 
+test("MangaLib preserves numeric slugs in title links and API requests", async () => {
+  for (const numericSlug of ["123--title-2", "123--86"]) {
+    assert.equal(mangalib.titleSlug(`https://mangalib.me/ru/${numericSlug}/read?chapter=2`), numericSlug);
+    await withFetch(async (input) => {
+      assert.equal(String(input), `https://api.cdnlibs.org/api/manga/${numericSlug}/chapters`);
+      return jsonResponse({ data: [] });
+    }, async () => {
+      await mangalib.fetchChapters(`https://mangalib.org/ru/manga/${numericSlug}?section=chapters`, null);
+    });
+  }
+  assert.equal(mangalib.titleSlug("https://mangalib.org/ru/manga/123--title.invalid"), null);
+});
+
 test("MangaLib fetches metadata and chapters with site headers and branch keys", async () => {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   await withFetch(async (input, init) => {

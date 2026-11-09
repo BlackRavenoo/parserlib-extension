@@ -4,7 +4,7 @@ import { CdnlibsApi, chapterKey, chapterTitle } from "./cdnlibs";
 import type { SiteHeaders } from "./cdnlibs";
 import { libSocialTitle, libSocialToken, libSocialRequestPatch } from "./libsocial";
 
-const SLUG_RE = /mangalib\.(?:me|org)\/\w+\/(?:manga\/)?(\d+--[a-z_-]+)/;
+const SLUG_RE = /mangalib\.(?:me|org)\/\w+\/(?:manga\/)?(\d+--[a-z0-9_-]+)(?=[/?#]|$)/;
 
 const SITE: SiteHeaders = { siteId: "1", service: "mangalib" };
 const api = new CdnlibsApi();

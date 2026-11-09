@@ -128,6 +128,19 @@ test("RanobeLib can fetch chapter lists without a token", async () => {
   });
 });
 
+test("RanobeLib preserves numeric slugs in title links and API requests", async () => {
+  for (const numericSlug of ["123--title-2", "123--86"]) {
+    assert.equal(ranobelib.titleSlug(`https://ranobelib.me/ru/${numericSlug}/read#chapter`), numericSlug);
+    await withFetch(async (input) => {
+      assert.equal(String(input), `https://api.cdnlibs.org/api/manga/${numericSlug}/chapters`);
+      return jsonResponse({ data: [] });
+    }, async () => {
+      await ranobelib.fetchChapters(`https://ranobelib.me/ru/book/${numericSlug}?section=chapters`, null);
+    });
+  }
+  assert.equal(ranobelib.titleSlug("https://ranobelib.me/ru/book/123--title.invalid"), null);
+});
+
 test("RanobeLib keeps ProseMirror text and attachment images in source order", async () => {
   const imageUrl = "https://ranobelib.me/uploads/ranobe/66993/chapters/4159608/illustration.png";
   const imageRequests: Array<{ url: string; init?: RequestInit }> = [];
