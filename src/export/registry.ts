@@ -11,7 +11,7 @@ export interface ExportFormat {
 type FormatRegistration = ExportFormat & { load: ExporterLoader };
 
 const formats: Record<string, FormatRegistration> = {
-  fb2: { key: "fb2", extension: "fb2", supportsAppend: false, load: () => import("./fb2") },
+  fb2: { key: "fb2", extension: "fb2", supportsAppend: true, load: () => import("./fb2") },
   epub: { key: "epub", extension: "epub", supportsAppend: true, load: () => import("./epub") },
   pdf: { key: "pdf", extension: "pdf", supportsAppend: false, load: () => import("./pdf") },
 };

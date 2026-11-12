@@ -11,7 +11,7 @@ const file = new File([new Uint8Array([0x50, 0x4b, 3, 4, 0, 255])], "Книга.
   type: "application/epub+zip",
   lastModified: 123456789,
 });
-const missingFile = /Выбранный EPUB не найден/;
+const missingFile = /Выбранный файл не найден/;
 
 function useDatabase(t: TestContext): IDBFactory {
   const factory = new IDBFactory();

@@ -11,6 +11,7 @@ import { ext } from "../src/lib/browser";
 import { getSource } from "../src/sources/registry";
 import { getExporter } from "../src/export/registry";
 import type { Book } from "../src/export/types";
+import fb2Exporter from "../src/export/fb2";
 import type { ChapterContent, ChapterRef } from "../src/sources/types";
 import { mockSession, setGlobal } from "./helpers/extension";
 
@@ -223,7 +224,7 @@ test("job appends missing chapters including gaps and passes the original EPUB t
   assert.equal(job.fetch.mock.callCount(), 0);
   assert.equal(job.download.mock.callCount(), 1);
   assert.deepEqual(job.view.progress, { max: 2, value: 2, hidden: false });
-  await assert.rejects(takeAppendFile(job.plan.appendFileId!), /Выбранный EPUB не найден/);
+  await assert.rejects(takeAppendFile(job.plan.appendFileId!), /Выбранный файл не найден/);
 });
 
 test("job skips export and download when every selected chapter is already in the EPUB", async (t) => {
@@ -268,8 +269,8 @@ test("job does not rewrite the EPUB if the first new chapter fails", async (t) =
 });
 
 test("job rejects append for formats that do not support it before fetching chapters", async (t) => {
-  const job = await setup(t, { format: "fb2", appendFileId: "existing-file" });
-  await assert.rejects(job.run(), /Формат FB2 не поддерживает докачку/);
+  const job = await setup(t, { format: "pdf", appendFileId: "existing-file" });
+  await assert.rejects(job.run(), /Формат PDF не поддерживает докачку/);
   assert.equal(job.fetchChapter.mock.callCount(), 0);
   assert.equal(job.exportBook.mock.callCount(), 0);
   assert.equal(job.download.mock.callCount(), 0);
@@ -278,7 +279,7 @@ test("job rejects append for formats that do not support it before fetching chap
 test("job rejects an unavailable append file before fetching chapters", async (t) => {
   const job = await setupAppend(t, []);
   await takeAppendFile(job.plan.appendFileId!);
-  await assert.rejects(job.run(), /Выбранный EPUB не найден/);
+  await assert.rejects(job.run(), /Выбранный файл не найден/);
   assert.equal(job.inspect.mock.callCount(), 0);
   assert.equal(job.fetchChapter.mock.callCount(), 0);
   assert.equal(job.append.mock.callCount(), 0);
@@ -342,4 +343,44 @@ test("job page reads the plan ID from its URL and displays startup failures in t
   assert.equal(job.classes.has("error"), true);
   assert.equal(job.view.status.textContent, "Ошибка: Первая глава не скачалась, сохранять нечего. Причина: Нет доступа.");
   assert.equal(job.download.mock.callCount(), 0);
+});
+
+async function setupFb2(t: TestContext, selectedIdentity = { sourceKey: "ranobelib", titleId: "123", branchId: 4 }) {
+  setGlobal(t, "indexedDB", new IDBFactory());
+  const original = await fb2Exporter.export({
+    title: "Книга: главы", identity: selectedIdentity,
+    chapters: [chapters[0]!, chapters[2]!].map((chapter) => ({ id: chapter.id, title: chapter.title, chunks: content(chapter).chunks })),
+  });
+  const appendFileId = await storeAppendFile(new File([original], "Книга.fb2", { type: original.type }));
+  const selected = chapters.map((chapter) => ({ ...chapter, branchId: 4 }));
+  return { original, ...await setup(t, { format: "fb2", branchId: 4, chapters: selected, appendFileId }) };
+}
+
+test("FB2 job uses the real exporter to skip old chapters, fill a gap and retain old content", async (t) => {
+  const job = await setupFb2(t);
+  await job.run();
+  assert.deepEqual(job.fetchChapter.mock.calls.map(({ arguments: args }) => args[0].id), [9]);
+  assert.equal(job.exportBook.mock.callCount(), 0);
+  const completed = job.createUrl.mock.calls[0]!.arguments[0];
+  const xml = await completed.text();
+  assert.deepEqual([...xml.matchAll(/<section id="chapter_(\d+)"/g)].map((match) => Number(match[1])), [7, 9, 12]);
+  assert.equal(completed.type, "application/x-fictionbook+xml");
+  assert.match(job.download.mock.calls[0]!.arguments[0].filename!, /\.fb2$/);
+  assert.match(job.view.status.textContent, /Готово, файл сохранён/);
+});
+
+test("FB2 job stops before fetching when the file belongs to another branch", async (t) => {
+  const job = await setupFb2(t, { sourceKey: "ranobelib", titleId: "123", branchId: 5 });
+  await assert.rejects(job.run(), /ветка перевода в FB2 не совпадают/);
+  assert.equal(job.fetchChapter.mock.callCount(), 0);
+  assert.equal(job.download.mock.callCount(), 0);
+});
+
+test("FB2 job skips saving when all selected chapters are present", async (t) => {
+  const job = await setupFb2(t);
+  const id = await storeJobPlan({ ...job.plan, chapters: [job.plan.chapters[0]!, job.plan.chapters[2]!] });
+  await runJob(id, job.view);
+  assert.equal(job.fetchChapter.mock.callCount(), 0);
+  assert.equal(job.download.mock.callCount(), 0);
+  assert.match(job.view.status.textContent, /Все выбранные главы уже есть/);
 });

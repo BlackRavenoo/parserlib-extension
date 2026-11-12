@@ -8,6 +8,7 @@ export interface JobPlan {
   meta: TitleMeta;
   chapters: ChapterRef[];
   appendFileId?: string;
+  branchId?: number | null;
 }
 
 const PLAN_KEY_PREFIX = "job-plan:";

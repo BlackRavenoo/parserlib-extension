@@ -40,13 +40,18 @@ export async function runJob(planId: string, view: JobView): Promise<void> {
   barEl.hidden = false;
 
   let appendFile: File | undefined;
+  const identity = plan.branchId === undefined ? undefined : {
+    sourceKey: plan.sourceKey,
+    titleId: plan.meta.id,
+    branchId: plan.branchId,
+  };
   let chapters = plan.chapters;
   if (plan.appendFileId) {
     if (!format.supportsAppend || !exporter.inspectExisting || !exporter.append) {
       throw new Error(`Формат ${format.key.toUpperCase()} не поддерживает докачку.`);
     }
     appendFile = await takeAppendFile(plan.appendFileId);
-    const existingIds = await exporter.inspectExisting(appendFile, plan.meta.title);
+    const existingIds = await exporter.inspectExisting(appendFile, plan.meta.title, identity);
     chapters = chaptersToAppend(plan.chapters, existingIds);
     if (chapters.length === 0) {
       barEl.max = plan.chapters.length;
@@ -112,6 +117,7 @@ export async function runJob(planId: string, view: JobView): Promise<void> {
     author: plan.meta.author,
     coverImage,
     chapters: bookChapters,
+    ...(identity && { identity }),
   };
   const blob = appendFile ? await exporter.append!(book, appendFile) : await exporter.export(book);
 

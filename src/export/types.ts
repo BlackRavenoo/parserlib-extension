@@ -1,4 +1,5 @@
 import type { DataChunk } from "../core/models";
+import type { BookIdentity } from "../core/models";
 
 export interface BookChapter {
   id: number;
@@ -11,13 +12,22 @@ export interface Book {
   author?: string;
   coverImage?: { data: Uint8Array; mime: string };
   chapters: BookChapter[];
+  identity?: BookIdentity;
 }
 
 export interface Exporter {
   readonly extension: "fb2" | "epub" | "pdf";
   export(book: Book): Promise<Blob>;
-  inspectExisting?(file: Blob, title: string): Promise<Set<number>>;
+  inspectExisting?(file: Blob, title: string, identity?: BookIdentity): Promise<Set<number>>;
   append?(book: Book, file: Blob): Promise<Blob>;
+}
+
+export function isBookIdentity(value: unknown): value is BookIdentity {
+  if (!value || typeof value !== "object") return false;
+  const identity = value as Partial<BookIdentity>;
+  return typeof identity.sourceKey === "string" && identity.sourceKey.length > 0 &&
+    typeof identity.titleId === "string" && identity.titleId.length > 0 &&
+    (identity.branchId === null || (typeof identity.branchId === "number" && Number.isSafeInteger(identity.branchId) && identity.branchId > 0));
 }
 
 export function sanitizeFilename(name: string, replacement = "_"): string {

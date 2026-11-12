@@ -34,7 +34,7 @@ const nextBook: Book = {
 
 test("format capabilities are exposed by the registry", () => {
   assert.deepEqual(listFormats().map(({ key, supportsAppend }) => [key, supportsAppend]), [
-    ["fb2", false],
+    ["fb2", true],
     ["epub", true],
     ["pdf", false],
   ]);

@@ -36,6 +36,7 @@ for (const format of listFormats()) {
 
 function updateAppendControls(): void {
   const format = getFormat(formatSelect.value);
+  appendFileInput.accept = `.${format.extension}`;
   appendOption.hidden = !format.supportsAppend;
   if (!format.supportsAppend) appendEnabled.checked = false;
   appendFileRow.hidden = !appendEnabled.checked;

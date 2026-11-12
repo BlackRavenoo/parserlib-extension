@@ -15,3 +15,9 @@ export interface ImageChunk {
 }
 
 export type DataChunk = TextChunk | ImageChunk;
+
+export interface BookIdentity {
+  sourceKey: string;
+  titleId: string;
+  branchId: number | null;
+}

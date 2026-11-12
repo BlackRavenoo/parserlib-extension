@@ -62,7 +62,7 @@ export async function takeAppendFile(id: string): Promise<File> {
     store.delete(id);
     await completed;
     const file = (request.result as StoredFile | undefined)?.file;
-    if (!(file instanceof File)) throw new Error("Выбранный EPUB не найден. Выберите файл заново в popup.");
+    if (!(file instanceof File)) throw new Error("Выбранный файл не найден. Выберите файл заново в popup.");
     return file;
   } finally {
     db.close();
