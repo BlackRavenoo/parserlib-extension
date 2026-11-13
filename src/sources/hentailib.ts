@@ -1,7 +1,7 @@
 import type { DataChunk } from "../core/models";
 import { HttpClient } from "../lib/http";
 import type { HttpClientConfig } from "../lib/http";
-import { CdnlibsApi, chapterKey, chapterTitle } from "./cdnlibs";
+import { CdnlibsApi, chapterRefs } from "./cdnlibs";
 import type { SiteHeaders } from "./cdnlibs";
 import { libSocialRequestPatch, libSocialTitle, libSocialToken } from "./libsocial";
 import type { ChapterContent, ChapterRef, Source, TitleMeta } from "./types";
@@ -47,12 +47,7 @@ async function fetchMeta(slug: string, token: string | null): Promise<TitleMeta>
 async function fetchChapters(slug: string, token: string | null): Promise<ChapterRef[]> {
   requireAuth(token);
   const rows = await api.getChapters(SITE, slug);
-  return rows.map((row) => ({
-    id: row.index,
-    title: chapterTitle(row),
-    key: chapterKey(row),
-    slug,
-  }));
+  return chapterRefs(rows, slug);
 }
 
 const source: Source = {

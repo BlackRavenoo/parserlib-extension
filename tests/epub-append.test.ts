@@ -99,3 +99,51 @@ test("an EPUB can be continued more than once", async () => {
   assert.equal((ncx.match(/<navPoint\b/g) ?? []).length, 3);
   assert.match(ncx, /playOrder="3"/);
 });
+
+const identity = { sourceKey: "ranobelib", titleId: "123", branchId: 41 };
+
+test("EPUB preserves translation identity across repeated appends and keeps chapter indices", async () => {
+  const original = await epubExporter.export({ ...firstBook, identity });
+  const completed = await epubExporter.append!({ ...nextBook, identity }, original);
+  assert.deepEqual(await epubExporter.inspectExisting!(completed, firstBook.title, identity), new Set([1, 2]));
+  const zip = await JSZip.loadAsync(completed);
+  assert.deepEqual(JSON.parse(await zip.file("META-INF/parserlib.json")!.async("string")), { version: 1, identity });
+  assert.equal(await zip.file("OEBPS/chapter_1.xhtml")!.async("string"),
+    await (await JSZip.loadAsync(original)).file("OEBPS/chapter_1.xhtml")!.async("string"));
+  assert.match(await zip.file("OEBPS/nav.xhtml")!.async("string"), /chapter_2.xhtml/);
+});
+
+test("EPUB rejects another branch, source or title ID even when titles and chapter indices match", async () => {
+  const original = await epubExporter.export({ ...firstBook, identity });
+  for (const other of [
+    { ...identity, branchId: 42 }, { ...identity, sourceKey: "mangalib" },
+    { ...identity, titleId: "456" }, { ...identity, branchId: null }, undefined,
+  ]) {
+    await assert.rejects(epubExporter.inspectExisting!(original, firstBook.title, other), /не совпадают/);
+    await assert.rejects(epubExporter.append!({ ...nextBook, identity: other }, original), /не совпадают/);
+  }
+});
+
+test("EPUB does not guess the translation identity of old files", async () => {
+  const original = await epubExporter.export(firstBook);
+  await assert.rejects(epubExporter.inspectExisting!(original, firstBook.title, identity), /нет сведений о ветке/);
+  await assert.rejects(epubExporter.append!({ ...nextBook, identity }, original), /Скачайте книгу заново/);
+});
+
+test("EPUB supports the main translation with a null branch ID", async () => {
+  const main = { ...identity, branchId: null };
+  const original = await epubExporter.export({ ...firstBook, identity: main });
+  const completed = await epubExporter.append!({ ...nextBook, identity: main }, original);
+  assert.deepEqual(await epubExporter.inspectExisting!(completed, firstBook.title, main), new Set([1, 2]));
+});
+
+test("EPUB refuses corrupt identity metadata instead of falling back to title matching", async () => {
+  const original = await epubExporter.export({ ...firstBook, identity });
+  for (const value of ["broken", "null", JSON.stringify({ version: 2, identity }), JSON.stringify({ version: 1, identity: { ...identity, branchId: "41" } })]) {
+    const zip = await JSZip.loadAsync(original);
+    zip.file("META-INF/parserlib.json", value);
+    const corrupt = await zip.generateAsync({ type: "blob" });
+    await assert.rejects(epubExporter.inspectExisting!(corrupt, firstBook.title, identity), /некорректные сведения/);
+    await assert.rejects(epubExporter.append!({ ...nextBook, identity }, corrupt), /некорректные сведения/);
+  }
+});

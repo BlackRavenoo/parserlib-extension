@@ -11,6 +11,7 @@ const chapter: ChapterRef = {
   title: "Том 4, Глава 1 - Побочная история",
   key: "number=1&volume=4&branch_id=12",
   slug,
+  branchId: 12,
 };
 
 async function withFetch<T>(mock: typeof fetch, run: () => Promise<T>): Promise<T> {
@@ -100,7 +101,7 @@ test("RanobeLib fetches metadata and chapter keys with its site headers", async 
     });
     assert.deepEqual(result.chapters, [
       chapter,
-      { id: 8, title: "Том 4, Глава 1.5", key: "number=1.5&volume=4", slug },
+      { id: 8, title: "Том 4, Глава 1.5", key: "number=1.5&volume=4", slug, branchId: null },
     ]);
   });
 
@@ -153,6 +154,7 @@ test("RanobeLib keeps ProseMirror text and attachment images in source order", a
       return jsonResponse({
         data: {
           id: 4159608,
+          branch_id: 12,
           attachments: [{ name: "illustration", url: "/uploads/ranobe/66993/chapters/4159608/illustration.png" }],
           content: {
             type: "doc",
@@ -273,7 +275,7 @@ test("RanobeLib preserves HTML text styles, line breaks, and inline illustration
     await withFetch(async (input, init) => {
       const url = String(input);
       if (url === `${apiBase}/chapter?${chapter.key}`) {
-        return jsonResponse({ data: { id: 4159608, content: "<h2>Заголовок</h2><p>Текст</p><img>" } });
+        return jsonResponse({ data: { id: 4159608, branch_id: 12, content: "<h2>Заголовок</h2><p>Текст</p><img>" } });
       }
       assert.equal(url, imageUrl);
       assert.deepEqual(init?.headers, {});
@@ -297,7 +299,7 @@ test("RanobeLib rejects missing, empty, and unrecognized chapter content", async
   for (const content of [null, 42, { type: "doc", content: [] }]) {
     await withFetch(async (input) => {
       assert.equal(String(input), `${apiBase}/chapter?${chapter.key}`);
-      return jsonResponse({ data: { id: 4159608, content } });
+      return jsonResponse({ data: { id: 4159608, branch_id: 12, content } });
     }, async () => {
       await assert.rejects(
         ranobelib.fetchChapter(chapter, null),

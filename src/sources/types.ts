@@ -6,6 +6,8 @@ export interface ChapterRef {
   title: string;
   key: string;
   slug: string;
+  branchId?: number | null;
+  branchName?: string;
 }
 
 export interface TitleMeta {

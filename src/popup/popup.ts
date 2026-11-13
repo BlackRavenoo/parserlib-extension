@@ -7,9 +7,12 @@ import { getFormat, listFormats } from "../export/registry";
 import { getSourceByUrl, resolveKeyByUrl } from "../sources/registry";
 import { readFromTab } from "../lib/token";
 import type { ChapterRef, TitleMeta } from "../sources/types";
+import { translationBranches } from "./branches";
+import type { TranslationBranch } from "./branches";
 
 const form = document.getElementById("settings-form") as HTMLFormElement;
 const formatSelect = document.getElementById("format") as HTMLSelectElement;
+const branchSelect = document.getElementById("branch") as HTMLSelectElement;
 const startButton = document.getElementById("start") as HTMLButtonElement;
 const sourceEl = document.getElementById("source") as HTMLDivElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
@@ -54,14 +57,17 @@ let currentKey: string | null = null;
 let currentMeta: TitleMeta | null = null;
 let currentChapters: ChapterRef[] = [];
 let currentToken: string | null = null;
+let branches: TranslationBranch[] = [];
+let currentBranch: TranslationBranch | null = null;
 
 function showError(error: unknown): void {
   statusEl.classList.add("error");
   statusEl.textContent = `Ошибка: ${error instanceof Error ? error.message : String(error)}`;
 }
 
-function showSettings(meta: TitleMeta, chapters: ChapterRef[]): void {
-  currentMeta = meta;
+function showBranch(): void {
+  currentBranch = branches.find((branch) => String(branch.id ?? "default") === branchSelect.value) ?? null;
+  const chapters = currentBranch?.chapters ?? [];
   currentChapters = chapters;
 
   const fillSelect = (select: HTMLSelectElement, selectedIndex: number): void => {
@@ -74,15 +80,39 @@ function showSettings(meta: TitleMeta, chapters: ChapterRef[]): void {
       select.append(option);
     });
     select.value = String(selectedIndex);
-    select.disabled = false;
+    select.disabled = chapters.length === 0;
   };
 
   fillSelect(fromInput, 0);
   fillSelect(toInput, chapters.length - 1);
   chapterCountEl.textContent = `Найдено глав: ${chapters.length}`;
   statusEl.classList.remove("error");
-  statusEl.textContent = "Выберите начальную и конечную главу.";
-  startButton.disabled = false;
+  statusEl.textContent = currentBranch ? "Выберите начальную и конечную главу." : "Выберите ветку перевода.";
+  startButton.disabled = chapters.length === 0;
+}
+
+branchSelect.addEventListener("change", showBranch);
+
+function showSettings(meta: TitleMeta, chapters: ChapterRef[]): void {
+  currentMeta = meta;
+  branches = translationBranches(chapters);
+  branchSelect.replaceChildren();
+  if (branches.length > 1) {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Выберите перевод…";
+    placeholder.disabled = true;
+    branchSelect.append(placeholder);
+  }
+  for (const branch of branches) {
+    const option = document.createElement("option");
+    option.value = String(branch.id ?? "default");
+    option.textContent = `${branch.name} — глав: ${branch.chapters.length}`;
+    branchSelect.append(option);
+  }
+  branchSelect.disabled = branches.length === 0;
+  branchSelect.value = branches.length === 1 ? String(branches[0]!.id ?? "default") : "";
+  showBranch();
 }
 
 async function initialize(): Promise<void> {
@@ -118,7 +148,7 @@ async function initialize(): Promise<void> {
 
   const fingerprint = await tokenFingerprint(token);
   const identity = documentTimeOrigin
-    ? JSON.stringify([slug, documentTimeOrigin, fingerprint])
+    ? JSON.stringify(["branches-v1", key, slug, documentTimeOrigin, fingerprint])
     : null;
 
   if (!(await patchApiHeaders(source, url))) {
@@ -144,19 +174,22 @@ async function initialize(): Promise<void> {
     ({ meta, chapters } = await source.fetchTitle(url, token));
     sourceEl.textContent = `${label}: ${meta.title}`;
   }
-  currentMeta = meta;
-  currentChapters = chapters.sort((a, b) => a.id - b.id);
-  if (currentChapters.length === 0) {
+  const sortedChapters = chapters.sort((a, b) => a.id - b.id);
+  if (sortedChapters.length === 0) {
     throw new Error("У этой работы нет глав для скачивания.");
   }
 
-  showSettings(meta, currentChapters);
-  if (identity) await storePopupData(tab.id, { identity, meta, chapters: currentChapters });
+  showSettings(meta, sortedChapters);
+  if (identity) await storePopupData(tab.id, { identity, meta, chapters: sortedChapters });
 }
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!currentUrl || !currentKey || !currentMeta) return;
+  if (!currentBranch) {
+    showError("Выберите ветку перевода.");
+    return;
+  }
 
   const fromIndex = Number(fromInput.value);
   const toIndex = Number(toInput.value);
@@ -165,6 +198,7 @@ form.addEventListener("submit", async (event) => {
     return;
   }
   const selected = currentChapters.slice(fromIndex, toIndex + 1);
+  const branchId = currentBranch.id;
   const format = getFormat(formatSelect.value);
   const appendFile = format.supportsAppend && appendEnabled.checked ? appendFileInput.files?.[0] : null;
   if (appendEnabled.checked && (!appendFile || !appendFile.name.toLowerCase().endsWith(`.${format.extension}`))) {
@@ -182,9 +216,10 @@ form.addEventListener("submit", async (event) => {
     planId = await storeJobPlan({
       sourceKey: currentKey,
       token: currentToken,
-      format: formatSelect.value,
+      format: format.key,
       meta: currentMeta,
       chapters: selected,
+      branchId,
       ...(appendFileId && { appendFileId }),
     });
     await ext.tabs.create({ url: chrome.runtime.getURL(`job/index.html?plan=${encodeURIComponent(planId)}`) });

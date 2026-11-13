@@ -1,7 +1,32 @@
 import type JSZip from "jszip";
 import type { Book, BookChapter, Exporter } from "./types";
-import { escapeXml } from "./types";
+import { escapeXml, isBookIdentity } from "./types";
 import { renderTextChunk } from "./text";
+import type { BookIdentity } from "../core/models";
+
+const IDENTITY_FILE = "META-INF/parserlib.json";
+
+async function verifyIdentity(zip: JSZip, expected?: BookIdentity): Promise<void> {
+  const file = zip.file(IDENTITY_FILE);
+  if (!file) {
+    if (expected) {
+      throw new Error("В EPUB нет сведений о ветке перевода. Скачайте книгу заново, чтобы безопасно докачивать её.");
+    }
+    return;
+  }
+  let stored: { version?: number; identity?: unknown };
+  try {
+    stored = JSON.parse(await file.async("string"));
+    if (stored?.version !== 1 || !isBookIdentity(stored.identity)) throw new Error();
+  } catch {
+    throw new Error("EPUB повреждён: некорректные сведения об источнике и ветке перевода.");
+  }
+  const actual = stored.identity as BookIdentity;
+  if (!expected || !isBookIdentity(expected) || actual.sourceKey !== expected.sourceKey ||
+    actual.titleId !== expected.titleId || actual.branchId !== expected.branchId) {
+    throw new Error("Источник, тайтл или ветка перевода в EPUB не совпадают с выбранными. Выберите подходящий файл.");
+  }
+}
 
 function extFromMime(mime: string): string {
   const subtype = (mime.split(";")[0] ?? "").split("/")[1]?.trim() ?? "";
@@ -104,7 +129,7 @@ function chapterTitlesFromNav(nav: string): Map<number, string> {
   return titles;
 }
 
-async function openExisting(file: Blob, title: string): Promise<{
+async function openExisting(file: Blob, title: string, identity?: BookIdentity): Promise<{
   zip: JSZip;
   ids: Set<number>;
   titles: Map<number, string>;
@@ -131,6 +156,7 @@ async function openExisting(file: Blob, title: string): Promise<{
     zip.file("OEBPS/toc.ncx")!.async("string"),
   ]);
   if (mimetype !== "application/epub+zip") throw new Error("Выбранный файл не является EPUB.");
+  await verifyIdentity(zip, identity);
   if (!opf.includes(`<dc:title>${escapeXml(title)}</dc:title>`)) {
     throw new Error("Название книги в EPUB не совпадает с текущим тайтлом.");
   }
@@ -169,6 +195,10 @@ const epubExporter: Exporter = {
     const zip = new JSZip();
 
     zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+    if (book.identity) {
+      if (!isBookIdentity(book.identity)) throw new Error("Некорректные сведения об источнике и ветке перевода.");
+      zip.file(IDENTITY_FILE, JSON.stringify({ version: 1, identity: book.identity }));
+    }
 
     zip.file(
       "META-INF/container.xml",
@@ -261,13 +291,13 @@ const epubExporter: Exporter = {
     return new Blob([content.buffer as ArrayBuffer], { type: "application/epub+zip" });
   },
 
-  async inspectExisting(file: Blob, title: string): Promise<Set<number>> {
-    const { ids } = await openExisting(file, title);
+  async inspectExisting(file: Blob, title: string, identity?: BookIdentity): Promise<Set<number>> {
+    const { ids } = await openExisting(file, title, identity);
     return ids;
   },
 
   async append(book: Book, file: Blob): Promise<Blob> {
-    const { zip, ids, titles, opf, nav, ncx } = await openExisting(file, book.title);
+    const { zip, ids, titles, opf, nav, ncx } = await openExisting(file, book.title, book.identity);
     const chapters = [...book.chapters].sort((a, b) => a.id - b.id);
     if (chapters.some((chapter) => !Number.isSafeInteger(chapter.id) || chapter.id < 0)) {
       throw new Error("Новые главы должны иметь корректные ID.");

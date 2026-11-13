@@ -11,6 +11,7 @@ const chapter: ChapterRef = {
   title: "Том 1, Глава 1.1 - Начало",
   key: "number=1.1&volume=1&branch_id=42",
   slug,
+  branchId: 42,
 };
 
 async function withFetch<T>(mock: typeof fetch, run: () => Promise<T>): Promise<T> {
@@ -90,6 +91,7 @@ test("HentaiLib fetches title and chapters from its API with site headers", asyn
         data: [
           {
             id: 80844,
+          branch_id: 42,
             index: 7,
             item_number: 1,
             volume: "1",
@@ -121,8 +123,8 @@ test("HentaiLib fetches title and chapters from its API with site headers", asyn
       coverUrl: "https://cover.hentaicdn.org/cover.jpg",
     });
     assert.deepEqual(result.chapters, [
-      { id: 7, title: "Том 1, Глава 1.1 - Начало", key: "number=1.1&volume=1&branch_id=42", slug },
-      { id: 8, title: "Том 1, Глава 2", key: "number=2&volume=1", slug },
+      { id: 7, title: "Том 1, Глава 1.1 - Начало", key: "number=1.1&volume=1&branch_id=42", slug, branchId: 42 },
+      { id: 8, title: "Том 1, Глава 2", key: "number=2&volume=1", slug, branchId: null },
     ]);
   });
 
@@ -152,6 +154,7 @@ test("HentaiLib downloads images in page order without sending the API token", a
       return jsonResponse({
         data: {
           id: 80844,
+          branch_id: 42,
           pages: [
             { id: 20, url: "//manga/sun-ken-rock/second.png" },
             { id: 10, url: "manga/sun-ken-rock/first.jpg" },
@@ -185,7 +188,7 @@ test("HentaiLib downloads images in page order without sending the API token", a
 test("HentaiLib rejects empty and incomplete chapters", async () => {
   await withFetch(async (input) => {
     if (String(input) === `${apiBase}/chapter?${chapter.key}`) {
-      return jsonResponse({ data: { id: 80844, pages: [] } });
+      return jsonResponse({ data: { id: 80844, branch_id: 42, pages: [] } });
     }
     throw new Error(`Unexpected request: ${input}`);
   }, async () => {
@@ -194,7 +197,7 @@ test("HentaiLib rejects empty and incomplete chapters", async () => {
 
   await withFetch(async (input) => {
     if (String(input) === `${apiBase}/chapter?${chapter.key}`) {
-      return jsonResponse({ data: { id: 80844, pages: [{ id: 1, url: "/missing.jpg" }] } });
+      return jsonResponse({ data: { id: 80844, branch_id: 42, pages: [{ id: 1, url: "/missing.jpg" }] } });
     }
     return new Response("missing", { status: 404 });
   }, async () => {

@@ -1,6 +1,6 @@
 import type { ChapterContent, ChapterRef, Source, TitleMeta } from "./types";
 import type { DataChunk } from "../core/models";
-import { CdnlibsApi, chapterKey, chapterTitle } from "./cdnlibs";
+import { CdnlibsApi, chapterRefs } from "./cdnlibs";
 import type { SiteHeaders } from "./cdnlibs";
 import { libSocialTitle, libSocialToken, libSocialRequestPatch } from "./libsocial";
 
@@ -34,12 +34,7 @@ async function fetchMeta(slug: string, token: string | null): Promise<TitleMeta>
 async function fetchChapters(slug: string, token: string | null): Promise<ChapterRef[]> {
   api.setAuth(token);
   const rows = await api.getChapters(SITE, slug);
-  return rows.map((row) => ({
-    id: row.index,
-    title: chapterTitle(row),
-    key: chapterKey(row),
-    slug,
-  }));
+  return chapterRefs(rows, slug);
 }
 
 const source: Source = {

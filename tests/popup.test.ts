@@ -31,10 +31,10 @@ class Element {
   async trigger(type: string): Promise<void> { await this.listeners.get(type)?.({ preventDefault() {} }); }
 }
 
-test("popup enables FB2 append, filters file types and transfers the chosen file to the job", { timeout: 5000 }, async (t) => {
+test("popup requires a translation, resets its range, and stores only the selected branch in the job plan", { timeout: 5000 }, async (t) => {
   const session = mockSession(t);
   const elements = Object.fromEntries([
-    "settings-form", "format", "start", "source", "status", "range-from", "range-to", "chapter-count",
+    "settings-form", "format", "branch", "start", "source", "status", "range-from", "range-to", "chapter-count",
     "append-option", "append-enabled", "append-file-row", "append-file",
   ].map((id) => [id, new Element()]));
   const element = (id: string) => elements[id]!;
@@ -72,8 +72,41 @@ test("popup enables FB2 append, filters file types and transfers the chosen file
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(fetchChapters.mock.callCount(), 1);
   assert.equal(fetchTitle.mock.callCount(), 0);
+  assert.equal(element("branch").value, "");
+  assert.equal(element("start").disabled, true);
+  await element("settings-form").trigger("submit");
+  assert.match(element("status").textContent, /Выберите ветку/);
+  assert.equal(create.mock.callCount(), 0);
+
+  element("branch").value = "41";
+  await element("branch").trigger("change");
+  assert.equal(element("range-to").value, "1");
+  assert.equal(element("range-from").children[0]!.textContent, "Том 1, Глава 1.5");
+  element("range-from").value = "1";
+  element("branch").value = "42";
+  await element("branch").trigger("change");
+  assert.equal(element("range-from").value, "0");
+  assert.equal(element("range-to").value, "0");
+  assert.equal(element("chapter-count").textContent, "Найдено глав: 1");
   assert.equal(element("start").disabled, false);
+
+  await element("settings-form").trigger("submit");
+  assert.match(element("status").textContent, /Не удалось открыть вкладку/);
+  assert.equal([...session.stored.keys()].some((key) => key.startsWith("job-plan:")), false);
+  assert.equal(element("start").disabled, false);
+  assert.equal(close.mock.callCount(), 0);
   create.mock.mockImplementation(async () => ({ id: 6 }) as chrome.tabs.Tab);
+  await element("settings-form").trigger("submit");
+  const plan = [...session.stored.entries()].find(([key]) => key.startsWith("job-plan:"))![1] as JobPlan;
+  assert.equal(plan.branchId, 42);
+  assert.deepEqual(plan.chapters, [chapters[1]]);
+  assert.equal(plan.token, "test-token");
+  assert.equal(close.mock.callCount(), 1);
+  assert.equal(fetchChapters.mock.callCount(), 1);
+  const cache = session.stored.get("popup-data:5") as { chapters: ChapterRef[]; identity: string };
+  assert.equal(cache.chapters.length, 3);
+  assert.match(cache.identity, /branches-v1/);
+
   assert.equal(element("append-option").hidden, false);
   assert.equal(element("append-file").accept, ".fb2");
   setGlobal(t, "indexedDB", new IDBFactory());
@@ -88,8 +121,8 @@ test("popup enables FB2 append, filters file types and transfers the chosen file
   await element("settings-form").trigger("submit");
   const fb2Plan = [...session.stored.values()].find((value) => (value as JobPlan).appendFileId) as JobPlan;
   assert.equal(fb2Plan.format, "fb2");
+  assert.equal(fb2Plan.branchId, 42);
   assert.equal(await (await takeAppendFile(fb2Plan.appendFileId!)).text(), "исходный FB2");
-  assert.equal(close.mock.callCount(), 1);
   element("format").value = "epub";
   await element("format").trigger("change");
   assert.equal(element("append-file").accept, ".epub");

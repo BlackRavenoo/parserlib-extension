@@ -31,6 +31,13 @@ export async function runJob(planId: string, view: JobView): Promise<void> {
 
   const plan = await takeJobPlan(planId);
   if (!plan) throw new Error("Не найдены параметры загрузки. Вернитесь в popup и запустите её снова.");
+  if (plan.branchId !== undefined && plan.chapters.some((chapter) => {
+    const requestedBranch = new URLSearchParams(chapter.key).get("branch_id");
+    return (chapter.branchId ?? null) !== plan.branchId ||
+      requestedBranch !== (plan.branchId === null ? null : String(plan.branchId));
+  })) {
+    throw new Error("План содержит главы другой ветки перевода. Запустите загрузку заново.");
+  }
 
   titleEl.textContent = plan.meta.title;
   const source = await getSource(plan.sourceKey);

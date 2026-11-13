@@ -345,6 +345,33 @@ test("job page reads the plan ID from its URL and displays startup failures in t
   assert.equal(job.download.mock.callCount(), 0);
 });
 
+test("job sends the selected translation identity to EPUB inspection and export", async (t) => {
+  const selected = chapters.map((chapter) => ({ ...chapter, branchId: 4 }));
+  const job = await setupAppend(t, [7], { branchId: 4, chapters: selected });
+  await job.run();
+  const identity = { sourceKey: "ranobelib", titleId: "123", branchId: 4 };
+  assert.deepEqual(job.inspect.mock.calls[0]!.arguments[2], identity);
+  assert.deepEqual(job.append.mock.calls[0]!.arguments[0].identity, identity);
+  assert.deepEqual(job.fetchChapter.mock.calls.map(({ arguments: args }) => args[0].branchId), [4, 4]);
+});
+
+test("job records source identity for the main translation too", async (t) => {
+  const selected = chapters.map((chapter) => ({ ...chapter, branchId: null, key: chapter.key.replace("&branch_id=4", "") }));
+  const job = await setup(t, { branchId: null, chapters: selected });
+  await job.run();
+  assert.deepEqual(job.exportBook.mock.calls[0]!.arguments[0].identity, { sourceKey: "ranobelib", titleId: "123", branchId: null });
+});
+
+test("job refuses mixed branches or a mismatched request key before downloading", async (t) => {
+  const job = await setup(t, { branchId: 4 });
+  await assert.rejects(job.run(), /другой ветки/);
+  assert.equal(job.fetchChapter.mock.callCount(), 0);
+  assert.equal(job.download.mock.callCount(), 0);
+  const id = await storeJobPlan({ ...job.plan, chapters: chapters.map((chapter) => ({ ...chapter, branchId: 4, key: "number=1&volume=2&branch_id=5" })) });
+  await assert.rejects(runJob(id, job.view), /другой ветки/);
+  assert.equal(job.fetchChapter.mock.callCount(), 0);
+});
+
 async function setupFb2(t: TestContext, selectedIdentity = { sourceKey: "ranobelib", titleId: "123", branchId: 4 }) {
   setGlobal(t, "indexedDB", new IDBFactory());
   const original = await fb2Exporter.export({

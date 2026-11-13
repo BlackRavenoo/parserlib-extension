@@ -1,5 +1,6 @@
 import { HttpClient } from "../lib/http";
 import type { HttpClientConfig } from "../lib/http";
+import type { ChapterRef } from "./types";
 
 const API_URL = "https://api.cdnlibs.org/api/manga";
 
@@ -62,6 +63,14 @@ export interface ChapterRow {
   number_secondary: string;
   name: string | null;
   branch_id?: number | null;
+  branches?: ChapterBranchRow[];
+  teams?: { name: string }[];
+}
+
+export interface ChapterBranchRow {
+  id: number;
+  branch_id: number | null;
+  teams?: { name: string }[];
 }
 
 export interface PageRow {
@@ -83,6 +92,7 @@ export interface ChapterDataRow {
   pages?: PageRow[];
   content?: unknown;
   attachments?: Attachment[];
+  branch_id?: number | null;
 }
 
 function asString(value: unknown, fallback = ""): string {
@@ -134,6 +144,11 @@ export class CdnlibsApi {
     if (!raw?.data || typeof raw.data !== "object") {
       throw apiError("Не удалось получить содержимое главы", slug, raw);
     }
+    const branchId = new URLSearchParams(key).get("branch_id");
+    if ((branchId !== null && String(raw.data.branch_id) !== branchId) ||
+      (branchId === null && raw.data.branch_id != null)) {
+      throw new Error("API вернул главу другой ветки перевода. Загрузка остановлена.");
+    }
     return raw.data as ChapterDataRow;
   }
 
@@ -171,4 +186,28 @@ export function chapterKey(row: { volume: string; number: string; branch_id?: nu
     asString(row.volume)
   )}`;
   return row.branch_id == null ? key : `${key}&branch_id=${encodeURIComponent(String(row.branch_id))}`;
+}
+
+export function chapterRefs(rows: ChapterRow[], slug: string): ChapterRef[] {
+  return rows.flatMap((row) => {
+    const branches = row.branches ?? [{ branch_id: row.branch_id ?? null, teams: row.teams }];
+    const seen = new Set<number | null>();
+    return branches.map((branch) => {
+      const branchId = branch.branch_id;
+      if (branchId !== null && (!Number.isSafeInteger(branchId) || branchId <= 0)) {
+        throw new Error("API вернул некорректную ветку перевода.");
+      }
+      if (seen.has(branchId)) throw new Error("API вернул несколько переводов одной главы в одной ветке.");
+      seen.add(branchId);
+      const branchName = [...new Set(branch.teams?.map((team) => team.name.trim()).filter(Boolean))].join(", ");
+      return {
+        id: row.index,
+        title: chapterTitle(row),
+        key: chapterKey({ ...row, branch_id: branchId }),
+        slug,
+        branchId,
+        ...(branchName && { branchName }),
+      };
+    });
+  });
 }

@@ -11,6 +11,7 @@ const chapter: ChapterRef = {
   title: "Том 1, Глава 1.5 - Начало",
   key: "number=1.5&volume=1&branch_id=42",
   slug,
+  branchId: 42,
 };
 
 async function withFetch<T>(mock: typeof fetch, run: () => Promise<T>): Promise<T> {
@@ -105,7 +106,7 @@ test("MangaLib fetches metadata and chapters with site headers and branch keys",
     });
     assert.deepEqual(result.chapters, [
       chapter,
-      { id: 8, title: "Том 1, Глава 2", key: "number=2&volume=1", slug },
+      { id: 8, title: "Том 1, Глава 2", key: "number=2&volume=1", slug, branchId: null },
     ]);
   });
 
@@ -141,7 +142,7 @@ test("MangaLib downloads pages in ID order and tries the second CDN after a 404"
     const url = String(input);
     if (url === `${apiBase}/chapter?${chapter.key}`) {
       return jsonResponse({
-        data: { id: 101, pages: [{ id: 20, url: `/${secondPath}` }, { id: 10, url: firstPath }] },
+        data: { id: 101, branch_id: 42, pages: [{ id: 20, url: `/${secondPath}` }, { id: 10, url: firstPath }] },
       });
     }
     imageRequests.push(url);
@@ -174,7 +175,7 @@ test("MangaLib downloads pages in ID order and tries the second CDN after a 404"
 test("MangaLib rejects empty chapters and malformed chapter lists", async () => {
   await withFetch(async (input) => {
     if (String(input) === `${apiBase}/chapter?${chapter.key}`) {
-      return jsonResponse({ data: { id: 101, pages: [] } });
+      return jsonResponse({ data: { id: 101, branch_id: 42, pages: [] } });
     }
     throw new Error(`Unexpected request: ${input}`);
   }, async () => {
