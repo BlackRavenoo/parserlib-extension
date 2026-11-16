@@ -231,7 +231,7 @@ async function withDom<T>(nodes: TestElement[], run: () => Promise<T>): Promise<
   class TestDOMParser {
     parseFromString(_html: string, mime: string) {
       assert.equal(mime, "text/html");
-      return { body: { querySelectorAll: () => nodes } };
+      return { body: new TestElement("BODY", nodes) };
     }
   }
   const classes = {
@@ -313,5 +313,50 @@ test("RanobeLib rejects missing, empty, and unrecognized chapter content", async
     return jsonResponse({ data: null });
   }, async () => {
     await assert.rejects(ranobelib.fetchChapters(titleUrl, null), /список глав/);
+  });
+});
+
+test("RanobeLib preserves text and nested styles around images inside HTML blocks", async () => {
+  const src = "/uploads/inline.jpg";
+  const nodes = [new TestElement("DIV", [
+    new TestParagraph("P", [
+      new TestText(" До "),
+      new TestElement("EM", [new TestText("курсив "), new TestImage(src), new TestText(" после")]),
+      new TestElement("STRONG", [new TestText(" конец ")]),
+    ]),
+    new TestHeading("H2", [new TestImage(src), new TestText("Заголовок")]),
+    new TestParagraph("P", [new TestText("   ")]),
+  ])];
+  let images = 0;
+  await withDom(nodes, async () => {
+    await withFetch(async (input) => {
+      if (String(input) === `${apiBase}/chapter?${chapter.key}`) {
+        return jsonResponse({ data: { branch_id: 12, content: "<p>До <em>курсив <img> после</em><strong> конец</strong></p>" } });
+      }
+      assert.equal(String(input), `https://ranobelib.me${src}`);
+      images++;
+      return new Response(Uint8Array.of(images));
+    }, async () => {
+      assert.deepEqual((await ranobelib.fetchChapter(chapter, null)).chunks, [
+        { kind: "text", text: "До ", styles: [], startsParagraph: true },
+        { kind: "text", text: "курсив ", styles: ["emphasis"], startsParagraph: false },
+        { kind: "image", data: Uint8Array.of(1), mime: "image/jpeg" },
+        { kind: "text", text: " после", styles: ["emphasis"], startsParagraph: true },
+        { kind: "text", text: " конец", styles: ["strong"], startsParagraph: false },
+        { kind: "image", data: Uint8Array.of(2), mime: "image/jpeg" },
+        { kind: "text", text: "Заголовок", styles: [], startsParagraph: true, headingLevel: 2 },
+      ]);
+    });
+  });
+  assert.equal(images, 2);
+});
+
+test("RanobeLib propagates failures of images inside HTML paragraphs", async () => {
+  await withDom([new TestParagraph("P", [new TestText("До"), new TestImage("/missing.jpg"), new TestText("После")])], async () => {
+    await withFetch(async (input) => String(input) === `${apiBase}/chapter?${chapter.key}`
+      ? jsonResponse({ data: { branch_id: 12, content: "<p>До<img src='/missing.jpg'>После</p>" } })
+      : new Response("", { status: 404 }), async () => {
+      await assert.rejects(ranobelib.fetchChapter(chapter, null), /404/);
+    });
   });
 });

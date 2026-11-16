@@ -39,7 +39,6 @@ export async function openExistingFb2(file: Blob, title: string, identity?: Book
   let tailCharOffset = 0;
   let tailByteOffset = 0;
 
-  // Позиции SAX измеряются в UTF-16, а Blob.slice принимает смещения в байтах.
   const bytePosition = (position: number): number => {
     if (position >= charOffset) {
       return byteOffset + encoder.encode(chunk.slice(0, position - charOffset)).length;

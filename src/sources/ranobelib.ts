@@ -61,21 +61,6 @@ function htmlStyles(element: Element, inherited: TextStyle[]): TextStyle[] {
   return [...styles];
 }
 
-function collectHtmlText(node: Node, runs: TextRun[], inherited: TextStyle[] = []): void {
-  if (node.nodeType === Node.TEXT_NODE) {
-    addTextRun(runs, node.nodeValue ?? "", inherited);
-    return;
-  }
-
-  if (node instanceof HTMLBRElement) {
-    addTextRun(runs, "\n", inherited);
-    return;
-  }
-
-  const styles = node instanceof Element ? htmlStyles(node, inherited) : inherited;
-  for (const child of node.childNodes) collectHtmlText(child, runs, styles);
-}
-
 function textChunksFromRuns(runs: TextRun[], headingLevel?: number): DataChunk[] {
   return trimTextRuns(runs).map((run, index) => ({
     kind: "text",
@@ -122,22 +107,71 @@ async function parseHtmlToChunks(html: string): Promise<DataChunk[]> {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const chunks: DataChunk[] = [];
 
-  for (const node of doc.body.querySelectorAll("p, h1, h2, h3, h4, h5, h6, img")) {
-    if (node instanceof HTMLParagraphElement) {
-      const runs: TextRun[] = [];
-      collectHtmlText(node, runs);
-      chunks.push(...textChunksFromRuns(runs));
-    } else if (node instanceof HTMLHeadingElement) {
-      const runs: TextRun[] = [];
-      collectHtmlText(node, runs);
-      chunks.push(...textChunksFromRuns(runs, Number(node.tagName.slice(1))));
-    } else if (node instanceof HTMLImageElement) {
-      const src = node.getAttribute("src") ?? "";
-      if (!src) continue;
-      const image = await api.getImageByUrl(absolute(src));
-      chunks.push({ kind: "image", data: image.data, mime: image.mime });
+  const addImage = async (node: HTMLImageElement, target: DataChunk[]): Promise<void> => {
+    const src = node.getAttribute("src");
+    if (!src) return;
+    const image = await api.getImageByUrl(absolute(src));
+    target.push({ kind: "image", data: image.data, mime: image.mime });
+  };
+
+  const parseBlock = async (block: Element, headingLevel?: number): Promise<void> => {
+    const blockChunks: DataChunk[] = [];
+    let runs: TextRun[] = [];
+    const flushText = () => {
+      runs.forEach((run) => blockChunks.push({
+        kind: "text",
+        text: run.text,
+        styles: run.styles,
+        startsParagraph: false,
+        ...(headingLevel !== undefined && { headingLevel }),
+      }));
+      runs = [];
+    };
+    const visit = async (node: Node, inherited: TextStyle[]): Promise<void> => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        addTextRun(runs, node.nodeValue ?? "", inherited);
+      } else if (node instanceof HTMLBRElement) {
+        addTextRun(runs, "\n", inherited);
+      } else if (node instanceof HTMLImageElement) {
+        flushText();
+        await addImage(node, blockChunks);
+      } else {
+        const styles = node instanceof Element ? htmlStyles(node, inherited) : inherited;
+        for (const child of node.childNodes) await visit(child, styles);
+      }
+    };
+    await visit(block, []);
+    flushText();
+
+    const first = blockChunks[0];
+    const last = blockChunks[blockChunks.length - 1];
+    if (first?.kind === "text") first.text = first.text.trimStart();
+    if (last?.kind === "text") last.text = last.text.trimEnd();
+    let startsParagraph = true;
+    for (const chunk of blockChunks) {
+      if (chunk.kind === "text") {
+        if (!chunk.text) continue;
+        chunk.startsParagraph = startsParagraph;
+        startsParagraph = false;
+      } else {
+        startsParagraph = true;
+      }
+      chunks.push(chunk);
     }
-  }
+  };
+
+  const visitBlocks = async (node: Node): Promise<void> => {
+    if (node instanceof HTMLParagraphElement) {
+      await parseBlock(node);
+    } else if (node instanceof HTMLHeadingElement) {
+      await parseBlock(node, Number(node.tagName.slice(1)));
+    } else if (node instanceof HTMLImageElement) {
+      await addImage(node, chunks);
+    } else {
+      for (const child of node.childNodes) await visitBlocks(child);
+    }
+  };
+  await visitBlocks(doc.body);
 
   return chunks;
 }
