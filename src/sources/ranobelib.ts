@@ -4,7 +4,7 @@ import { CdnlibsApi, chapterRefs } from "./cdnlibs";
 import type { SiteHeaders } from "./cdnlibs";
 import { libSocialTitle, libSocialToken, libSocialRequestPatch } from "./libsocial";
 
-const SLUG_RE = /ranobelib\.me\/\w+\/(?:book\/)?(\d+--[a-z0-9_-]+)(?=[/?#]|$)/;
+const SLUG_RE = /ranobelib\.me\/\w+\/(?:(?:book|manga)\/)?(\d+--[a-z0-9_-]+)(?=[/?#]|$)/;
 const SITE_ORIGIN = "https://ranobelib.me";
 
 const SITE: SiteHeaders = { siteId: "3", service: "ranobelib" };
