@@ -42,7 +42,7 @@ test("format capabilities are exposed by the registry", () => {
 });
 
 test("append plan skips downloaded chapters and includes gaps before the file's last chapter", () => {
-  const chapters: ChapterRef[] = [1, 2, 3].map((id) => ({ id, title: `Глава ${id}`, key: String(id), slug: "book" }));
+  const chapters: ChapterRef[] = [1, 2, 3].map((id) => ({ id, title: `Глава ${id}`, volume: "1", key: String(id), slug: "book" }));
   assert.deepEqual(chaptersToAppend(chapters, new Set([1, 2])), [chapters[2]]);
   assert.deepEqual(chaptersToAppend(chapters, new Set([1, 2, 3])), []);
   assert.deepEqual(chaptersToAppend(chapters, new Set([1, 3])), [chapters[1]]);

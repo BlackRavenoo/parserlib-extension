@@ -7,36 +7,12 @@ import type { JobPlan } from "../src/lib/job-plan";
 import { IDBFactory } from "fake-indexeddb";
 import { takeAppendFile } from "../src/lib/append-file";
 import { mockSession, setGlobal } from "./helpers/extension";
-
-class Element {
-  value = "";
-  textContent = "";
-  title = "";
-  disabled = false;
-  hidden = false;
-  checked = false;
-  required = false;
-  accept = "";
-  files: File[] = [];
-  children: Element[] = [];
-  classes = new Set<string>();
-  classList = { add: (name: string) => this.classes.add(name), remove: (name: string) => this.classes.delete(name) };
-  listeners = new Map<string, (event: { preventDefault(): void }) => unknown>();
-  append(child: Element): void {
-    this.children.push(child);
-    if (this.children.length === 1) this.value = child.value;
-  }
-  replaceChildren(): void { this.children = []; this.value = ""; }
-  addEventListener(type: string, listener: (event: { preventDefault(): void }) => unknown): void { this.listeners.set(type, listener); }
-  async trigger(type: string): Promise<void> { await this.listeners.get(type)?.({ preventDefault() {} }); }
-}
+import { Element, popupElements } from "./helpers/popup";
+import { tokenFingerprint } from "../src/lib/popup-cache";
 
 test("popup requires a translation, resets its range, and stores only the selected branch in the job plan", { timeout: 5000 }, async (t) => {
   const session = mockSession(t);
-  const elements = Object.fromEntries([
-    "settings-form", "format", "branch", "start", "source", "status", "range-from", "range-to", "chapter-count",
-    "append-option", "append-enabled", "append-file-row", "append-file",
-  ].map((id) => [id, new Element()]));
+  const elements = popupElements();
   const element = (id: string) => elements[id]!;
   setGlobal(t, "document", {
     getElementById: element,
@@ -56,9 +32,12 @@ test("popup requires a translation, resets its range, and stores only the select
     result: options.func === source.titleInPage ? "Книга" : options.func === source.tokenInPage ? "test-token" : "123456",
   }]);
   const chapters: ChapterRef[] = [
-    { id: 7, title: "Том 1, Глава 1.5", slug: "123--test", key: "number=1.5&volume=1&branch_id=41", branchId: 41, branchName: "Первая команда" },
-    { id: 7, title: "Том 1, Глава 1.5", slug: "123--test", key: "number=1.5&volume=1&branch_id=42", branchId: 42, branchName: "Вторая команда" },
-    { id: 8, title: "Том 1, Глава 2", slug: "123--test", key: "number=2&volume=1&branch_id=41", branchId: 41, branchName: "Первая команда" },
+    { id: 7, title: "Том 1, Глава 1.1", volume: "1", slug: "123--test", key: "number=1.1&volume=1&branch_id=41", branchId: 41, branchName: "Первая команда" },
+    { id: 7, title: "Том 3, Глава 1.5", volume: "3", slug: "123--test", key: "number=1.5&volume=3&branch_id=42", branchId: 42, branchName: "Вторая команда" },
+    { id: 8, title: "Том 1, Глава 1.5", volume: "1", slug: "123--test", key: "number=1.5&volume=1&branch_id=41", branchId: 41, branchName: "Первая команда" },
+    { id: 9, title: "Том 2, Глава 2", volume: "2", slug: "123--test", key: "number=2&volume=2&branch_id=41", branchId: 41 },
+    { id: 10, title: "Том 10, Глава 1", volume: "10", slug: "123--test", key: "number=1&volume=10&branch_id=41", branchId: 41 },
+    { id: 11, title: "Дополнение", volume: "", slug: "123--test", key: "number=1&volume=&branch_id=41", branchId: 41 },
   ];
   const chaptersFetched = Promise.withResolvers<void>();
   const fetchChapters = t.mock.method(source, "fetchChapters", async () => {
@@ -67,12 +46,18 @@ test("popup requires a translation, resets its range, and stores only the select
   });
   const fetchTitle = t.mock.method(source, "fetchTitle");
   const create = t.mock.method(ext.tabs, "create", async () => { throw new Error("Не удалось открыть вкладку."); });
+  session.stored.set("popup-data:5", {
+    identity: JSON.stringify(["branches-v1", "ranobelib", "123--test", "123456", await tokenFingerprint("test-token")]),
+    meta: { id: "123", title: "Старый кэш" },
+    chapters: [{ id: 1, title: "Глава без поля тома", slug: "123--test", key: "number=1&volume=1" }],
+  });
   await import("../src/popup/popup");
   await chaptersFetched.promise;
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(fetchChapters.mock.callCount(), 1);
   assert.equal(fetchTitle.mock.callCount(), 0);
   assert.equal(element("branch").value, "");
+  assert.equal(element("volumes").disabled, true);
   assert.equal(element("start").disabled, true);
   await element("settings-form").trigger("submit");
   assert.match(element("status").textContent, /Выберите ветку/);
@@ -80,14 +65,60 @@ test("popup requires a translation, resets its range, and stores only the select
 
   element("branch").value = "41";
   await element("branch").trigger("change");
-  assert.equal(element("range-to").value, "1");
-  assert.equal(element("range-from").children[0]!.textContent, "Том 1, Глава 1.5");
+  assert.equal(element("range-to").value, "4");
+  assert.equal(element("range-from").children[0]!.textContent, "Том 1, Глава 1.1");
+  const volumeCheckbox = (volume: string) => element("volume-list").children
+    .map((label) => label.children[0]!).find((input) => input.value === volume)!;
+  assert.deepEqual(element("volume-list").children.map((label) => label.children[1]!.textContent), [
+    "Том 1 — глав: 2", "Том 2 — глав: 1", "Том 10 — глав: 1", "Без тома — глав: 1",
+  ]);
+  assert.equal(element("volumes-all").checked, true);
+  assert.equal(element("volumes").disabled, false);
+  for (const volume of ["2", ""]) {
+    volumeCheckbox(volume).checked = false;
+    await volumeCheckbox(volume).trigger("change");
+  }
+  assert.equal(element("volumes-all").checked, false);
+  assert.equal(element("volumes-all").indeterminate, true);
+  assert.equal(element("chapter-count").textContent, "Найдено глав: 3");
+  assert.deepEqual(element("range-from").children.map((option) => option.textContent), [
+    chapters[0]!.title, chapters[2]!.title, chapters[4]!.title,
+  ]);
+  element("range-from").value = "1";
+  await element("settings-form").trigger("submit");
+  const filteredPlan = session.set.mock.calls.map(({ arguments: [items] }) => Object.entries(items))
+    .flat().find(([key]) => key.startsWith("job-plan:"))![1] as JobPlan;
+  assert.deepEqual(filteredPlan.chapters, [chapters[2], chapters[4]]);
+  assert.equal(filteredPlan.branchId, 41);
+  assert.equal([...session.stored.keys()].some((key) => key.startsWith("job-plan:")), false);
+  element("volumes-all").checked = false;
+  await element("volumes-all").trigger("change");
+  assert.equal(element("start").disabled, true);
+  assert.equal(element("range-from").disabled, true);
+  assert.equal(element("range-to").disabled, true);
+  assert.equal(element("volumes-all").indeterminate, false);
+  const callsBeforeEmpty = create.mock.callCount();
+  await element("settings-form").trigger("submit");
+  assert.equal(create.mock.callCount(), callsBeforeEmpty);
+  assert.match(element("status").textContent, /хотя бы один том/);
+  volumeCheckbox("2").checked = true;
+  await volumeCheckbox("2").trigger("change");
+  assert.equal(element("range-from").value, "0");
+  assert.equal(element("range-to").value, "0");
+  assert.equal(element("range-from").children[0]!.textContent, chapters[3]!.title);
+  element("volumes-all").checked = true;
+  await element("volumes-all").trigger("change");
+  assert.equal(element("range-to").value, "4");
+  assert.equal(element("volumes-all").indeterminate, false);
   element("range-from").value = "1";
   element("branch").value = "42";
   await element("branch").trigger("change");
   assert.equal(element("range-from").value, "0");
   assert.equal(element("range-to").value, "0");
   assert.equal(element("chapter-count").textContent, "Найдено глав: 1");
+  assert.equal(element("volume-list").children.length, 1);
+  assert.equal(volumeCheckbox("3").checked, true);
+  assert.equal(element("volumes-all").checked, true);
   assert.equal(element("start").disabled, false);
 
   await element("settings-form").trigger("submit");
@@ -104,8 +135,8 @@ test("popup requires a translation, resets its range, and stores only the select
   assert.equal(close.mock.callCount(), 1);
   assert.equal(fetchChapters.mock.callCount(), 1);
   const cache = session.stored.get("popup-data:5") as { chapters: ChapterRef[]; identity: string };
-  assert.equal(cache.chapters.length, 3);
-  assert.match(cache.identity, /branches-v1/);
+  assert.equal(cache.chapters.length, 6);
+  assert.match(cache.identity, /volumes-v1/);
 
   assert.equal(element("append-option").hidden, false);
   assert.equal(element("append-file").accept, ".fb2");

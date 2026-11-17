@@ -4,6 +4,7 @@ import type { RequestPatch } from "../lib/headers";
 export interface ChapterRef {
   id: number;
   title: string;
+  volume: string;
   key: string;
   slug: string;
   branchId?: number | null;

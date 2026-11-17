@@ -30,6 +30,7 @@ for (const [source, host, siteId] of [
     });
     const chapters = await source.fetchChapters(`https://${host}/ru/${slug}`, "test-token");
     assert.equal(chapters.length, 3);
+    assert.deepEqual(chapters.map(({ volume }) => volume), ["2", "2", "2"]);
     assert.deepEqual(chapters.map(({ id, branchId, key }) => [id, branchId, key]), [
       [7, 41, "number=1.5&volume=2&branch_id=41"],
       [7, 42, "number=1.5&volume=2&branch_id=42"],

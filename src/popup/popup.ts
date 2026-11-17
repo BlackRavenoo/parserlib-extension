@@ -9,10 +9,14 @@ import { readFromTab } from "../lib/token";
 import type { ChapterRef, TitleMeta } from "../sources/types";
 import { translationBranches } from "./branches";
 import type { TranslationBranch } from "./branches";
+import { chapterVolumes } from "./volumes";
 
 const form = document.getElementById("settings-form") as HTMLFormElement;
 const formatSelect = document.getElementById("format") as HTMLSelectElement;
 const branchSelect = document.getElementById("branch") as HTMLSelectElement;
+const volumesFieldset = document.getElementById("volumes") as HTMLFieldSetElement;
+const volumesAll = document.getElementById("volumes-all") as HTMLInputElement;
+const volumeList = document.getElementById("volume-list") as HTMLDivElement;
 const startButton = document.getElementById("start") as HTMLButtonElement;
 const sourceEl = document.getElementById("source") as HTMLDivElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
@@ -59,16 +63,19 @@ let currentChapters: ChapterRef[] = [];
 let currentToken: string | null = null;
 let branches: TranslationBranch[] = [];
 let currentBranch: TranslationBranch | null = null;
+const volumeInputs = new Map<string, HTMLInputElement>();
 
 function showError(error: unknown): void {
   statusEl.classList.add("error");
   statusEl.textContent = `Ошибка: ${error instanceof Error ? error.message : String(error)}`;
 }
 
-function showBranch(): void {
-  currentBranch = branches.find((branch) => String(branch.id ?? "default") === branchSelect.value) ?? null;
-  const chapters = currentBranch?.chapters ?? [];
+function showVolumes(): void {
+  const selectedVolumes = new Set([...volumeInputs].filter(([, input]) => input.checked).map(([id]) => id));
+  const chapters = (currentBranch?.chapters ?? []).filter((chapter) => selectedVolumes.has(chapter.volume));
   currentChapters = chapters;
+  volumesAll.checked = volumeInputs.size > 0 && selectedVolumes.size === volumeInputs.size;
+  volumesAll.indeterminate = selectedVolumes.size > 0 && selectedVolumes.size < volumeInputs.size;
 
   const fillSelect = (select: HTMLSelectElement, selectedIndex: number): void => {
     select.replaceChildren();
@@ -87,11 +94,39 @@ function showBranch(): void {
   fillSelect(toInput, chapters.length - 1);
   chapterCountEl.textContent = `Найдено глав: ${chapters.length}`;
   statusEl.classList.remove("error");
-  statusEl.textContent = currentBranch ? "Выберите начальную и конечную главу." : "Выберите ветку перевода.";
+  statusEl.textContent = !currentBranch ? "Выберите ветку перевода." : chapters.length === 0
+    ? "Выберите хотя бы один том." : "Выберите начальную и конечную главу.";
   startButton.disabled = chapters.length === 0;
 }
 
+function showBranch(): void {
+  currentBranch = branches.find((branch) => String(branch.id ?? "default") === branchSelect.value) ?? null;
+  volumeInputs.clear();
+  volumeList.replaceChildren();
+  const volumes = chapterVolumes(currentBranch?.chapters ?? []);
+  volumes.forEach((volume) => {
+    const label = document.createElement("label");
+    label.className = "checkbox";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = volume.id;
+    input.checked = true;
+    input.addEventListener("change", showVolumes);
+    const text = document.createElement("span");
+    text.textContent = `${volume.id ? `Том ${volume.id}` : "Без тома"} — глав: ${volume.count}`;
+    label.append(input, text);
+    volumeList.append(label);
+    volumeInputs.set(volume.id, input);
+  });
+  volumesFieldset.disabled = volumes.length === 0;
+  showVolumes();
+}
+
 branchSelect.addEventListener("change", showBranch);
+volumesAll.addEventListener("change", () => {
+  for (const input of volumeInputs.values()) input.checked = volumesAll.checked;
+  showVolumes();
+});
 
 function showSettings(meta: TitleMeta, chapters: ChapterRef[]): void {
   currentMeta = meta;
@@ -148,7 +183,7 @@ async function initialize(): Promise<void> {
 
   const fingerprint = await tokenFingerprint(token);
   const identity = documentTimeOrigin
-    ? JSON.stringify(["branches-v1", key, slug, documentTimeOrigin, fingerprint])
+    ? JSON.stringify(["volumes-v1", key, slug, documentTimeOrigin, fingerprint])
     : null;
 
   if (!(await patchApiHeaders(source, url))) {
@@ -188,6 +223,10 @@ form.addEventListener("submit", async (event) => {
   if (!currentUrl || !currentKey || !currentMeta) return;
   if (!currentBranch) {
     showError("Выберите ветку перевода.");
+    return;
+  }
+  if (currentChapters.length === 0) {
+    showError("Выберите хотя бы один том.");
     return;
   }
 

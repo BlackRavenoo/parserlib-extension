@@ -8,6 +8,7 @@ const titleUrl = `https://ranobelib.me/ru/book/${slug}?section=chapters`;
 const apiBase = `https://api.cdnlibs.org/api/manga/${slug}`;
 const chapter: ChapterRef = {
   id: 7,
+  volume: "4",
   title: "Том 4, Глава 1 - Побочная история",
   key: "number=1&volume=4&branch_id=12",
   slug,
@@ -34,6 +35,7 @@ test("RanobeLib recognizes book URLs and configures headers for API and images",
   assert.equal(ranobelib.requiresAuth, undefined);
   assert.equal(ranobelib.titleSlug(titleUrl), slug);
   assert.equal(ranobelib.titleSlug(`https://ranobelib.me/ru/${slug}`), slug);
+  assert.equal(ranobelib.titleSlug(`https://ranobelib.me/ru/manga/${slug}`), slug);
   assert.equal(ranobelib.titleSlug(`https://mangalib.me/ru/book/${slug}`), null);
   assert.equal(ranobelib.titleSlug("https://ranobelib.me/ru/book/invalid"), null);
 
@@ -101,7 +103,7 @@ test("RanobeLib fetches metadata and chapter keys with its site headers", async 
     });
     assert.deepEqual(result.chapters, [
       chapter,
-      { id: 8, title: "Том 4, Глава 1.5", key: "number=1.5&volume=4", slug, branchId: null },
+      { id: 8, title: "Том 4, Глава 1.5", volume: "4", key: "number=1.5&volume=4", slug, branchId: null },
     ]);
   });
 

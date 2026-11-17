@@ -8,6 +8,7 @@ const slug = "89959--yeokdagp-yeongji-sulgyesa";
 const apiBase = `https://api.cdnlibs.org/api/manga/${slug}`;
 const chapter: ChapterRef = {
   id: 7,
+  volume: "1",
   title: "Том 1, Глава 1.5 - Начало",
   key: "number=1.5&volume=1&branch_id=42",
   slug,
@@ -106,7 +107,7 @@ test("MangaLib fetches metadata and chapters with site headers and branch keys",
     });
     assert.deepEqual(result.chapters, [
       chapter,
-      { id: 8, title: "Том 1, Глава 2", key: "number=2&volume=1", slug, branchId: null },
+      { id: 8, title: "Том 1, Глава 2", volume: "1", key: "number=2&volume=1", slug, branchId: null },
     ]);
   });
 

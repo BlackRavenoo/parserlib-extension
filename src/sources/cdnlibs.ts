@@ -203,6 +203,7 @@ export function chapterRefs(rows: ChapterRow[], slug: string): ChapterRef[] {
       return {
         id: row.index,
         title: chapterTitle(row),
+        volume: asString(row.volume),
         key: chapterKey({ ...row, branch_id: branchId }),
         slug,
         branchId,

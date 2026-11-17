@@ -18,6 +18,7 @@ import { mockSession, setGlobal } from "./helpers/extension";
 const chapters: ChapterRef[] = [7, 9, 12].map((id) => ({
   id,
   title: `Том 2, Глава ${id}`,
+  volume: "2",
   key: `number=${id}&volume=2&branch_id=4`,
   slug: "123--test",
 }));
@@ -240,6 +241,17 @@ test("job skips export and download when every selected chapter is already in th
   assert.equal(job.view.status.textContent, "Все выбранные главы уже есть в файле. Новый файл не требуется.");
   assert.equal(job.classes.has("error"), false);
 });
+
+for (const format of ["fb2", "epub"]) {
+  test(`job appends only missing chapters from selected volumes in ${format.toUpperCase()}`, async (t) => {
+    const selected = [chapters[0]!, { ...chapters[2]!, volume: "10", key: "number=1.5&volume=10&branch_id=4" }];
+    const job = await setupAppend(t, [7], { format, chapters: selected });
+    await job.run();
+    assert.deepEqual(job.fetchChapter.mock.calls.map(({ arguments: [chapter] }) => chapter), [selected[1]]);
+    assert.deepEqual(job.append.mock.calls[0]!.arguments[0].chapters.map(({ id }) => id), [12]);
+    assert.equal(job.download.mock.callCount(), 1);
+  });
+}
 
 test("job appends completed new chapters when a later new chapter fails", async (t) => {
   const job = await setupAppend(t, [7]);

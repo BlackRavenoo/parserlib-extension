@@ -8,6 +8,7 @@ const slug = "2032--sun-ken-rock";
 const apiBase = `https://hapi.hentaicdn.org/api/manga/${slug}`;
 const chapter: ChapterRef = {
   id: 7,
+  volume: "1",
   title: "Том 1, Глава 1.1 - Начало",
   key: "number=1.1&volume=1&branch_id=42",
   slug,
@@ -123,8 +124,8 @@ test("HentaiLib fetches title and chapters from its API with site headers", asyn
       coverUrl: "https://cover.hentaicdn.org/cover.jpg",
     });
     assert.deepEqual(result.chapters, [
-      { id: 7, title: "Том 1, Глава 1.1 - Начало", key: "number=1.1&volume=1&branch_id=42", slug, branchId: 42 },
-      { id: 8, title: "Том 1, Глава 2", key: "number=2&volume=1", slug, branchId: null },
+      { id: 7, title: "Том 1, Глава 1.1 - Начало", volume: "1", key: "number=1.1&volume=1&branch_id=42", slug, branchId: 42 },
+      { id: 8, title: "Том 1, Глава 2", volume: "1", key: "number=2&volume=1", slug, branchId: null },
     ]);
   });
 
