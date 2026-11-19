@@ -27,6 +27,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check types
+        run: npx tsc --noEmit
+
+      - name: Build extension
+        run: npm run build
+
       - name: Check code coverage
         run: npm run coverage
 
