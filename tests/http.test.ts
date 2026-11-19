@@ -45,7 +45,7 @@ async function advance(t: TestContext, ms: number): Promise<void> {
   await setImmediate();
 }
 
-test("HTTP returns binary bytes and MIME and forwards request headers and credentials", async (t) => {
+test("HTTP returns binary bytes and MIME and forwards request headers and credentials", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t);
   replies.push(response(200, { "content-type": "image/webp" }));
   const headers = { Accept: "image/*", "Site-Id": "3" };
@@ -58,7 +58,7 @@ test("HTTP returns binary bytes and MIME and forwards request headers and creden
   assert.deepEqual(calls[0]?.init, { headers, credentials: "include" });
 });
 
-test("HTTP uses the fallback MIME and exposes raw bytes through requestBytes", async (t) => {
+test("HTTP uses the fallback MIME and exposes raw bytes through requestBytes", async (t: TestContext): Promise<void> => {
   const { client, replies } = setup(t);
   replies.push(response(), response());
 
@@ -66,7 +66,7 @@ test("HTTP uses the fallback MIME and exposes raw bytes through requestBytes", a
   assert.deepEqual(await client.requestBytes(url, {}), Uint8Array.of(1, 2, 255));
 });
 
-test("HTTP applies auth changes and can omit the API token for image requests", async (t) => {
+test("HTTP applies auth changes and can omit the API token for image requests", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t);
   replies.push(response(), response(), response(), response());
   const headers = { Accept: "*/*" };
@@ -89,7 +89,7 @@ test("HTTP applies auth changes and can omit the API token for image requests", 
   assert.deepEqual(headers, { Accept: "*/*" });
 });
 
-test("HTTP retries server errors with increasing delays before succeeding", async (t) => {
+test("HTTP retries server errors with increasing delays before succeeding", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t);
   replies.push(response(500), response(502), response());
   const pending = client.requestBytes(url, {});
@@ -108,7 +108,7 @@ test("HTTP retries server errors with increasing delays before succeeding", asyn
   assert.deepEqual(calls.map(({ time }) => time), [0, 1000, 3000]);
 });
 
-test("HTTP retries transport failures and reports an exhausted network retry budget", async (t) => {
+test("HTTP retries transport failures and reports an exhausted network retry budget", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t);
   replies.push(new TypeError("Network failure"), response());
   const pending = client.requestBytes(url, {});
@@ -127,7 +127,7 @@ test("HTTP retries transport failures and reports an exhausted network retry bud
   assert.equal(calls.length, 5);
 });
 
-test("HTTP shares the server retry budget between transport failures and server errors", async (t) => {
+test("HTTP shares the server retry budget between transport failures and server errors", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t, { ...config, serverRetries: 1 });
   replies.push(new TypeError("Network failure"), response(503), response());
   const rejected = assert.rejects(client.requestBytes(url, {}), {
@@ -141,7 +141,7 @@ test("HTTP shares the server retry budget between transport failures and server 
   assert.deepEqual(await client.requestBytes(url, {}), Uint8Array.of(1, 2, 255));
 });
 
-test("HTTP retries interrupted response bodies before returning complete bytes", async (t) => {
+test("HTTP retries interrupted response bodies before returning complete bytes", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t);
   replies.push(interruptedResponse(), response(200, { "content-type": "image/png" }));
   const pending = client.requestBinary(url, {}, { includeAuth: false, credentials: "include" });
@@ -155,7 +155,7 @@ test("HTTP retries interrupted response bodies before returning complete bytes",
   assert.deepEqual(calls[1]?.init, { headers: {}, credentials: "include" });
 });
 
-test("HTTP body failures share the retry budget with transport and server errors", async (t) => {
+test("HTTP body failures share the retry budget with transport and server errors", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t);
   replies.push(new TypeError("Сетевой сбой"), response(503), interruptedResponse(), response());
   const rejected = assert.rejects(client.requestBytes(url, {}), {
@@ -169,7 +169,7 @@ test("HTTP body failures share the retry budget with transport and server errors
   assert.deepEqual(await client.requestBytes(url, {}), Uint8Array.of(1, 2, 255));
 });
 
-test("HTTP does not retry permanent client errors or errors when retries are disabled", async (t) => {
+test("HTTP does not retry permanent client errors or errors when retries are disabled", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t, {
     ...config,
     serverRetries: 0,
@@ -188,7 +188,7 @@ test("HTTP does not retry permanent client errors or errors when retries are dis
 });
 
 for (const [header, delay] of [["2.5", 2500], ["0", 0], ["600", 120_000]] as const) {
-  test(`HTTP honors Retry-After ${header} with a delay of ${delay} ms`, async (t) => {
+  test(`HTTP honors Retry-After ${header} with a delay of ${delay} ms`, async (t: TestContext): Promise<void> => {
     const { client, replies, calls } = setup(t);
     replies.push(response(429, { "retry-after": header }), response());
     const pending = client.requestBytes(url, {});
@@ -207,7 +207,7 @@ for (const [header, delay] of [["2.5", 2500], ["0", 0], ["600", 120_000]] as con
   });
 }
 
-test("HTTP falls back to increasing delays for missing or invalid Retry-After values", async (t) => {
+test("HTTP falls back to increasing delays for missing or invalid Retry-After values", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t, {
     ...config,
     anonymous: { ...config.anonymous, rateLimitRetries: 3 },
@@ -231,7 +231,7 @@ test("HTTP falls back to increasing delays for missing or invalid Retry-After va
   assert.deepEqual(calls.map(({ time }) => time), [0, 2000, 6000, 12_000]);
 });
 
-test("HTTP chooses the authenticated retry profile and remains usable after exhausting retries", async (t) => {
+test("HTTP chooses the authenticated retry profile and remains usable after exhausting retries", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t, {
     ...config,
     anonymous: { ...config.anonymous, rateLimitRetries: 0 },
@@ -257,7 +257,7 @@ test("HTTP chooses the authenticated retry profile and remains usable after exha
   assert.deepEqual(await client.requestBytes(url, {}), Uint8Array.of(1, 2, 255));
 });
 
-test("HTTP shares the throttle budget between 403 and 429 independently of server retries", async (t) => {
+test("HTTP shares the throttle budget between 403 and 429 independently of server retries", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t, { ...config, serverRetries: 1 });
   replies.push(response(500), response(403), response(429), response());
   const pending = client.requestBytes(url, {});
@@ -270,7 +270,7 @@ test("HTTP shares the throttle budget between 403 and 429 independently of serve
   assert.deepEqual(calls.map(({ time }) => time), [0, 1000, 3000, 7000]);
 });
 
-test("HTTP stops retrying a persistent 403 and returns the CDN error", async (t) => {
+test("HTTP stops retrying a persistent 403 and returns the CDN error", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t, {
     ...config,
     anonymous: { ...config.anonymous, rateLimitRetries: 1 },
@@ -285,7 +285,7 @@ test("HTTP stops retrying a persistent 403 and returns the CDN error", async (t)
   assert.equal(calls.length, 2);
 });
 
-test("HTTP queues concurrent requests in FIFO order and refills rate limit slots", async (t) => {
+test("HTTP queues concurrent requests in FIFO order and refills rate limit slots", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t, {
     ...config,
     anonymous: { ...config.anonymous, requestsPerMinute: 2 },
@@ -308,7 +308,7 @@ test("HTTP queues concurrent requests in FIFO order and refills rate limit slots
   assert.deepEqual(calls.map(({ time }) => time), [0, 0, 30_000, 60_000, 90_000]);
 });
 
-test("HTTP caps the request burst after a long idle period", async (t) => {
+test("HTTP caps the request burst after a long idle period", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t, {
     ...config,
     anonymous: { ...config.anonymous, requestsPerMinute: 2 },
@@ -326,7 +326,7 @@ test("HTTP caps the request burst after a long idle period", async (t) => {
   assert.deepEqual(calls.map(({ time }) => time), [0, 0, 120_000, 120_000, 150_000]);
 });
 
-test("HTTP reschedules queued requests when the auth rate limit changes", async (t) => {
+test("HTTP reschedules queued requests when the auth rate limit changes", async (t: TestContext): Promise<void> => {
   const { client, replies, calls } = setup(t, {
     ...config,
     anonymous: { ...config.anonymous, requestsPerMinute: 1 },

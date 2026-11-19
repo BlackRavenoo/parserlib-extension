@@ -20,7 +20,7 @@ function setup(t: TestContext) {
   return { dnr, order, warn };
 }
 
-test("headers replace legacy dynamic rules with session rules restricted to extension API requests", async (t) => {
+test("headers replace legacy dynamic rules with session rules restricted to extension API requests", async (t: TestContext): Promise<void> => {
   const { dnr, order } = setup(t);
   assert.equal(await patchApiHeaders(mangalib, mangaUrl), true);
   assert.deepEqual(order, ["dynamic", "session"]);
@@ -47,7 +47,7 @@ test("headers replace legacy dynamic rules with session rules restricted to exte
   }]);
 });
 
-test("headers install the extra RanobeLib image rule and remove it when switching sources", async (t) => {
+test("headers install the extra RanobeLib image rule and remove it when switching sources", async (t: TestContext): Promise<void> => {
   const { dnr } = setup(t);
   assert.equal(await patchApiHeaders(ranobelib, ranobeUrl), true);
   const options = dnr.updateSessionRules.mock.calls[0]?.arguments[0] as {
@@ -72,14 +72,14 @@ test("headers install the extra RanobeLib image rule and remove it when switchin
   assert.deepEqual(replacement.addRules.map(({ id }) => id), [1]);
 });
 
-test("headers clear both sets of rules for sources that need no header overrides", async (t) => {
+test("headers clear both sets of rules for sources that need no header overrides", async (t: TestContext): Promise<void> => {
   const { dnr } = setup(t);
   assert.equal(await patchApiHeaders({ ...mangalib, requestPatch: undefined }, mangaUrl), true);
   assert.deepEqual(dnr.updateDynamicRules.mock.calls[0]?.arguments, [{ removeRuleIds: [1, 2] }]);
   assert.deepEqual(dnr.updateSessionRules.mock.calls[0]?.arguments, [{ removeRuleIds: [1, 2] }]);
 });
 
-test("headers report unavailable declarativeNetRequest instead of claiming success", async (t) => {
+test("headers report unavailable declarativeNetRequest instead of claiming success", async (t: TestContext): Promise<void> => {
   const { warn, dnr } = setup(t);
   Reflect.deleteProperty(chrome, "declarativeNetRequest");
   assert.equal(await patchApiHeaders(mangalib, mangaUrl), false);
@@ -87,7 +87,7 @@ test("headers report unavailable declarativeNetRequest instead of claiming succe
   assert.equal(warn.mock.callCount(), 1);
 });
 
-test("headers stop if removing legacy dynamic rules fails", async (t) => {
+test("headers stop if removing legacy dynamic rules fails", async (t: TestContext): Promise<void> => {
   const { dnr, warn } = setup(t);
   const error = new Error("Dynamic rules unavailable");
   dnr.updateDynamicRules.mock.mockImplementation(async () => { throw error; });
@@ -96,7 +96,7 @@ test("headers stop if removing legacy dynamic rules fails", async (t) => {
   assert.equal(warn.mock.calls[0]?.arguments[1], error);
 });
 
-test("headers return false when the browser rejects a session rule", async (t) => {
+test("headers return false when the browser rejects a session rule", async (t: TestContext): Promise<void> => {
   const { dnr, warn } = setup(t);
   const error = new Error("Invalid header operation");
   dnr.updateSessionRules.mock.mockImplementation(async () => { throw error; });
@@ -105,7 +105,7 @@ test("headers return false when the browser rejects a session rule", async (t) =
   assert.equal(warn.mock.calls[0]?.arguments[1], error);
 });
 
-test("headers reject excess rules before installing a partial set", async (t) => {
+test("headers reject excess rules before installing a partial set", async (t: TestContext): Promise<void> => {
   const { dnr, warn } = setup(t);
   const patch = mangalib.requestPatch!(mangaUrl);
   const source = { ...mangalib, requestPatch: () => ({ ...patch, additionalRules: [patch, patch] }) };

@@ -92,7 +92,6 @@ test("HentaiLib fetches title and chapters from its API with site headers", asyn
         data: [
           {
             id: 80844,
-          branch_id: 42,
             index: 7,
             item_number: 1,
             volume: "1",

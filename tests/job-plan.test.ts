@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { TestContext } from "node:test";
 import { removeJobPlan, storeJobPlan, takeJobPlan } from "../src/lib/job-plan";
 import type { JobPlan } from "../src/lib/job-plan";
 import { mockSession } from "./helpers/extension";
@@ -9,11 +10,11 @@ const plan: JobPlan = {
   token: "test-token",
   format: "epub",
   meta: { id: "123", title: "Тестовая книга" },
-  chapters: [{ id: 1, title: "Том 1, Глава 1", key: "number=1&volume=1", slug: "123--test" }],
+  chapters: [{ id: 1, title: "Том 1, Глава 1", key: "number=1&volume=1", slug: "123--test", volume: "" }],
   appendFileId: "existing-epub",
 };
 
-test("job plans preserve download parameters and are removed after being taken", async (t) => {
+test("job plans preserve download parameters and are removed after being taken", async (t: TestContext): Promise<void> => {
   const { stored } = mockSession(t);
   const id = await storeJobPlan(plan);
   assert.deepEqual(await takeJobPlan(id), plan);
@@ -21,7 +22,7 @@ test("job plans preserve download parameters and are removed after being taken",
   assert.equal(await takeJobPlan(id), null);
 });
 
-test("job plans have independent IDs and deleting one leaves other downloads intact", async (t) => {
+test("job plans have independent IDs and deleting one leaves other downloads intact", async (t: TestContext): Promise<void> => {
   mockSession(t);
   const first = await storeJobPlan(plan);
   const anonymous = { ...plan, token: null, format: "fb2", appendFileId: undefined };
@@ -34,7 +35,7 @@ test("job plans have independent IDs and deleting one leaves other downloads int
   assert.deepEqual(await takeJobPlan(second), anonymous);
 });
 
-test("job plans return null for absent or primitive entries and remove malformed entries", async (t) => {
+test("job plans return null for absent or primitive entries and remove malformed entries", async (t: TestContext): Promise<void> => {
   const { stored } = mockSession(t);
   assert.equal(await takeJobPlan("missing"), null);
   for (const value of [null, false, 12, "broken"]) {
@@ -44,7 +45,7 @@ test("job plans return null for absent or primitive entries and remove malformed
   }
 });
 
-test("job plans propagate storage write errors instead of returning a usable ID", async (t) => {
+test("job plans propagate storage write errors instead of returning a usable ID", async (t: TestContext): Promise<void> => {
   const { set, stored } = mockSession(t);
   const error = new Error("Storage quota exceeded");
   set.mock.mockImplementation(async () => { throw error; });
@@ -52,7 +53,7 @@ test("job plans propagate storage write errors instead of returning a usable ID"
   assert.equal(stored.size, 0);
 });
 
-test("job plans do not delete unread data when the storage read fails", async (t) => {
+test("job plans do not delete unread data when the storage read fails", async (t: TestContext): Promise<void> => {
   const { get, remove } = mockSession(t);
   const error = new Error("Storage unavailable");
   get.mock.mockImplementation(async () => { throw error; });
@@ -60,7 +61,7 @@ test("job plans do not delete unread data when the storage read fails", async (t
   assert.equal(remove.mock.callCount(), 0);
 });
 
-test("job plans propagate deletion errors instead of handing out a retained token", async (t) => {
+test("job plans propagate deletion errors instead of handing out a retained token", async (t: TestContext): Promise<void> => {
   const { remove } = mockSession(t);
   const id = await storeJobPlan(plan);
   const error = new Error("Cannot remove plan");

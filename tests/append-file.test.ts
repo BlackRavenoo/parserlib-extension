@@ -59,7 +59,7 @@ function abortAfterRequest(t: TestContext, method: "put" | "get" | "delete") {
   });
 }
 
-test("append files preserve binary content and File metadata and can only be taken once", async (t) => {
+test("append files preserve binary content and File metadata and can only be taken once", async (t: TestContext): Promise<void> => {
   useDatabase(t);
   const id = await storeAppendFile(file);
   const taken = await takeAppendFile(id);
@@ -73,7 +73,7 @@ test("append files preserve binary content and File metadata and can only be tak
   await assert.rejects(takeAppendFile(id), missingFile);
 });
 
-test("concurrent consumers cannot take the same append file twice", async (t) => {
+test("concurrent consumers cannot take the same append file twice", async (t: TestContext): Promise<void> => {
   const factory = useDatabase(t);
   const id = await storeAppendFile(file);
   const results = await Promise.allSettled([takeAppendFile(id), takeAppendFile(id)]);
@@ -81,11 +81,11 @@ test("concurrent consumers cannot take the same append file twice", async (t) =>
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
   const rejected = results.find((result) => result.status === "rejected");
   assert.ok(rejected?.status === "rejected");
-  assert.match(rejected.reason.message, missingFile);
+  assert.match(rejected?.reason.message, missingFile);
   assert.deepEqual(await readRecords(factory), []);
 });
 
-test("append file IDs are independent and removal is idempotent", async (t) => {
+test("append file IDs are independent and removal is idempotent", async (t: TestContext): Promise<void> => {
   useDatabase(t);
   const first = await storeAppendFile(file);
   const otherFile = new File(["Другая книга"], "Другая.epub");
@@ -98,14 +98,14 @@ test("append file IDs are independent and removal is idempotent", async (t) => {
   assert.equal(await (await takeAppendFile(second)).text(), await otherFile.text());
 });
 
-test("missing append files produce a recoverable error even in a new database", async (t) => {
+test("missing append files produce a recoverable error even in a new database", async (t: TestContext): Promise<void> => {
   const factory = useDatabase(t);
   await assert.rejects(takeAppendFile("missing"), missingFile);
   await removeAppendFile("missing");
   assert.deepEqual(await readRecords(factory), []);
 });
 
-test("malformed append file records are rejected and consumed", async (t) => {
+test("malformed append file records are rejected and consumed", async (t: TestContext): Promise<void> => {
   const factory = useDatabase(t);
   const db = await openDatabase(factory);
   try {
@@ -126,7 +126,7 @@ test("malformed append file records are rejected and consumed", async (t) => {
   assert.deepEqual(await readRecords(factory), []);
 });
 
-test("saving an append file removes only records strictly older than a day", async (t) => {
+test("saving an append file removes only records strictly older than a day", async (t: TestContext): Promise<void> => {
   useDatabase(t);
   let now = 1000;
   t.mock.method(Date, "now", () => now);
@@ -144,7 +144,7 @@ test("saving an append file removes only records strictly older than a day", asy
   }
 });
 
-test("aborting an append file write rolls back both the file and expired-record cleanup", async (t) => {
+test("aborting an append file write rolls back both the file and expired-record cleanup", async (t: TestContext): Promise<void> => {
   const factory = useDatabase(t);
   let now = 1000;
   t.mock.method(Date, "now", () => now);
@@ -166,7 +166,7 @@ test("aborting an append file write rolls back both the file and expired-record 
   assert.deepEqual(await (await takeAppendFile(expired)).bytes(), await file.bytes());
 });
 
-test("an aborted append file read does not return or consume the file", async (t) => {
+test("an aborted append file read does not return or consume the file", async (t: TestContext): Promise<void> => {
   useDatabase(t);
   const id = await storeAppendFile(file);
   const getMock = abortAfterRequest(t, "get");
@@ -176,7 +176,7 @@ test("an aborted append file read does not return or consume the file", async (t
   assert.deepEqual(await (await takeAppendFile(id)).bytes(), await file.bytes());
 });
 
-test("an aborted append file removal leaves the file available", async (t) => {
+test("an aborted append file removal leaves the file available", async (t: TestContext): Promise<void> => {
   useDatabase(t);
   const id = await storeAppendFile(file);
   const deleteMock = abortAfterRequest(t, "delete");
@@ -193,7 +193,7 @@ const operations = {
 };
 
 for (const [name, operation] of Object.entries(operations)) {
-  test(`append file ${name} waits for rollback and preserves the transaction error`, async (t) => {
+  test(`append file ${name} waits for rollback and preserves the transaction error`, async (t: TestContext): Promise<void> => {
     const factory = useDatabase(t);
     const id = await storeAppendFile(file);
     const original = IDBDatabase.prototype.transaction;
@@ -214,14 +214,14 @@ for (const [name, operation] of Object.entries(operations)) {
     assert.deepEqual(await (await takeAppendFile(id)).bytes(), await file.bytes());
   });
 
-  test(`append file ${name} propagates database opening errors`, async (t) => {
+  test(`append file ${name} propagates database opening errors`, async (t: TestContext): Promise<void> => {
     const factory = useDatabase(t);
     const db = await openDatabase(factory, 2);
     db.close();
     await assert.rejects(operation("unused"), { name: "VersionError" });
   });
 
-  test(`append file ${name} closes its connection when transaction creation throws`, async (t) => {
+  test(`append file ${name} closes its connection when transaction creation throws`, async (t: TestContext): Promise<void> => {
     useDatabase(t);
     const id = await storeAppendFile(file);
     const error = new DOMException("Хранилище недоступно.", "InvalidStateError");

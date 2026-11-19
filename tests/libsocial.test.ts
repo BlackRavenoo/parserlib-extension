@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { TestContext } from "node:test";
 import { libSocialTitle, libSocialToken } from "../src/sources/libsocial";
 import { setGlobal } from "./helpers/extension";
 
-test("LibSocial reads the access token from the site's auth session", (t) => {
+test("LibSocial reads the access token from the site's auth session", (t: TestContext): void => {
   const getItem = t.mock.fn(() => JSON.stringify({ token: { access_token: "test-token" } }));
   setGlobal(t, "localStorage", { getItem });
   assert.equal(libSocialToken(), "test-token");
   assert.deepEqual(getItem.mock.calls[0]?.arguments, ["auth"]);
 });
 
-test("LibSocial treats absent, malformed, and incomplete auth sessions as anonymous", (t) => {
+test("LibSocial treats absent, malformed, and incomplete auth sessions as anonymous", (t: TestContext): void => {
   const getItem = t.mock.fn<() => string | null>(() => null);
   setGlobal(t, "localStorage", { getItem });
   for (const raw of [null, "", "{invalid", "null", "{}", '{"token":null}',
@@ -20,14 +20,14 @@ test("LibSocial treats absent, malformed, and incomplete auth sessions as anonym
   }
 });
 
-test("LibSocial prefers the trimmed DOM heading without querying metadata", (t) => {
+test("LibSocial prefers the trimmed DOM heading without querying metadata", (t: TestContext): void => {
   const querySelector = t.mock.fn(() => ({ textContent: "  Название книги\n" }));
   setGlobal(t, "document", { querySelector });
   assert.equal(libSocialTitle(), "Название книги");
   assert.deepEqual(querySelector.mock.calls.map(({ arguments: args }) => args), [["h1.anx_anz"]]);
 });
 
-test("LibSocial extracts titles from Open Graph metadata when the heading is missing or empty", (t) => {
+test("LibSocial extracts titles from Open Graph metadata when the heading is missing or empty", (t: TestContext): void => {
   let heading: { textContent: string } | null = null;
   let ogTitle: string | null = null;
   setGlobal(t, "document", {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { TestContext } from "node:test";
 import { SaxesParser } from "saxes";
 import fb2Exporter from "../src/export/fb2";
 import type { Book, BookChapter } from "../src/export/types";
@@ -109,7 +110,7 @@ test("FB2 rejects malformed XML, broken image references and corrupted append me
   await assert.rejects(fb2Exporter.inspectExisting!(new Blob([Uint8Array.of(255)]), firstBook.title, identity), /UTF-8/);
 });
 
-test("FB2 reads split UTF-8, CRLF and tags through a stream without reading the whole file as text", async (t) => {
+test("FB2 reads split UTF-8, CRLF and tags through a stream without reading the whole file as text", async (t: TestContext): Promise<void> => {
   const original = await fb2Exporter.export(firstBook);
   const source = (await original.text()).replace(/\n/g, "\r\n").replace(/<(section|binary) /g, "<$1\r\n");
   const bytes = new TextEncoder().encode("\ufeff" + source);

@@ -7,7 +7,7 @@ import { mockSession } from "./helpers/extension";
 const data: PopupData = {
   identity: "test-page-identity",
   meta: { id: "123", title: "Тестовая книга", author: "Автор" },
-  chapters: [{ id: 1, title: "Том 1, Глава 1", key: "number=1&volume=1", slug: "123--test" }],
+  chapters: [{ id: 1, title: "Том 1, Глава 1", key: "number=1&volume=1", slug: "123--test", volume: "" }],
 };
 
 test("popup cache preserves title metadata and chapters independently for each tab", async (t) => {

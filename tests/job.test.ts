@@ -87,7 +87,7 @@ async function setupAppend(t: TestContext, existing: number[], overrides: Partia
   return { ...job, original, inspect, append };
 }
 
-test("job consumes its plan, preserves selected chapters and saves the exported book", async (t) => {
+test("job consumes its plan, preserves selected chapters and saves the exported book", async (t: TestContext): Promise<void> => {
   const job = await setup(t);
   await job.run();
 
@@ -112,7 +112,7 @@ test("job consumes its plan, preserves selected chapters and saves the exported 
   assert.equal(job.fetch.mock.callCount(), 0);
 });
 
-test("job waits for each chapter before fetching the next and exporting", { timeout: 5000 }, async (t) => {
+test("job waits for each chapter before fetching the next and exporting", { timeout: 5000 }, async (t: TestContext): Promise<void> => {
   const job = await setup(t, { token: null });
   const entered = Promise.withResolvers<void>();
   const chapterReady = Promise.withResolvers<ChapterContent>();
@@ -134,7 +134,7 @@ test("job waits for each chapter before fetching the next and exporting", { time
   assert.deepEqual(job.fetchChapter.mock.calls.map(({ arguments: args }) => args[1]), [null, null, null]);
 });
 
-test("job saves only completed chapters and stops fetching after a failure", async (t) => {
+test("job saves only completed chapters and stops fetching after a failure", async (t: TestContext): Promise<void> => {
   const job = await setup(t);
   job.fetchChapter.mock.mockImplementation(async (chapter) => {
     if (chapter.id === 9) throw new Error("Нет доступа к главе.");
@@ -151,7 +151,7 @@ test("job saves only completed chapters and stops fetching after a failure", asy
   assert.match(job.view.status.textContent, /На главе 2 загрузка остановилась: Нет доступа к главе\./);
 });
 
-test("job does not export or download when the first chapter fails", async (t) => {
+test("job does not export or download when the first chapter fails", async (t: TestContext): Promise<void> => {
   const job = await setup(t);
   job.fetchChapter.mock.mockImplementation(async () => { throw "Сеть недоступна."; });
   await assert.rejects(job.run(), /Первая глава не скачалась, сохранять нечего\. Причина: Сеть недоступна\./);
@@ -161,7 +161,7 @@ test("job does not export or download when the first chapter fails", async (t) =
   assert.equal(job.download.mock.callCount(), 0);
 });
 
-test("job rejects a missing or already consumed plan without fetching chapters", async (t) => {
+test("job rejects a missing or already consumed plan without fetching chapters", async (t: TestContext): Promise<void> => {
   const job = await setup(t);
   await assert.rejects(runJob("missing", job.view), /Не найдены параметры загрузки/);
   assert.equal(job.fetchChapter.mock.callCount(), 0);
@@ -171,7 +171,7 @@ test("job rejects a missing or already consumed plan without fetching chapters",
   assert.equal(job.download.mock.callCount(), 1);
 });
 
-test("job propagates export errors without creating a download URL", async (t) => {
+test("job propagates export errors without creating a download URL", async (t: TestContext): Promise<void> => {
   const job = await setup(t);
   const error = new Error("Не удалось собрать EPUB.");
   job.exportBook.mock.mockImplementation(async () => { throw error; });
@@ -182,7 +182,7 @@ test("job propagates export errors without creating a download URL", async (t) =
   assert.doesNotMatch(job.view.status.textContent, /файл сохранён/i);
 });
 
-test("job releases its object URL when the browser rejects the download", async (t) => {
+test("job releases its object URL when the browser rejects the download", async (t: TestContext): Promise<void> => {
   const job = await setup(t);
   const error = new Error("Сохранение запрещено.");
   job.download.mock.mockImplementation(async () => { throw error; });
@@ -191,7 +191,7 @@ test("job releases its object URL when the browser rejects the download", async 
   assert.doesNotMatch(job.view.status.textContent, /файл сохранён/i);
 });
 
-test("job keeps the object URL until the browser finishes accepting the download", { timeout: 5000 }, async (t) => {
+test("job keeps the object URL until the browser finishes accepting the download", { timeout: 5000 }, async (t: TestContext): Promise<void> => {
   const job = await setup(t);
   const entered = Promise.withResolvers<void>();
   const accepted = Promise.withResolvers<number>();
@@ -209,7 +209,7 @@ test("job keeps the object URL until the browser finishes accepting the download
   assert.match(job.view.status.textContent, /Готово, файл сохранён/);
 });
 
-test("job appends missing chapters including gaps and passes the original EPUB to the exporter", async (t) => {
+test("job appends missing chapters including gaps and passes the original EPUB to the exporter", async (t: TestContext): Promise<void> => {
   const job = await setupAppend(t, [9]);
   await job.run();
   assert.deepEqual(job.fetchChapter.mock.calls.map(({ arguments: args }) => args), [chapters[0], chapters[2]].map((chapter) => [chapter, "test-token"]));
@@ -228,7 +228,7 @@ test("job appends missing chapters including gaps and passes the original EPUB t
   await assert.rejects(takeAppendFile(job.plan.appendFileId!), /Выбранный файл не найден/);
 });
 
-test("job skips export and download when every selected chapter is already in the EPUB", async (t) => {
+test("job skips export and download when every selected chapter is already in the EPUB", async (t: TestContext): Promise<void> => {
   const job = await setupAppend(t, [7, 9, 12]);
   await job.run();
   assert.equal(job.fetchChapter.mock.callCount(), 0);
@@ -243,7 +243,7 @@ test("job skips export and download when every selected chapter is already in th
 });
 
 for (const format of ["fb2", "epub"]) {
-  test(`job appends only missing chapters from selected volumes in ${format.toUpperCase()}`, async (t) => {
+  test(`job appends only missing chapters from selected volumes in ${format.toUpperCase()}`, async (t: TestContext): Promise<void> => {
     const selected = [chapters[0]!, { ...chapters[2]!, volume: "10", key: "number=1.5&volume=10&branch_id=4" }];
     const job = await setupAppend(t, [7], { format, chapters: selected });
     await job.run();
@@ -253,7 +253,7 @@ for (const format of ["fb2", "epub"]) {
   });
 }
 
-test("job appends completed new chapters when a later new chapter fails", async (t) => {
+test("job appends completed new chapters when a later new chapter fails", async (t: TestContext): Promise<void> => {
   const job = await setupAppend(t, [7]);
   job.fetchChapter.mock.mockImplementation(async (chapter) => {
     if (chapter.id === 12) throw new Error("Ошибка иллюстрации.");
@@ -270,7 +270,7 @@ test("job appends completed new chapters when a later new chapter fails", async 
   assert.deepEqual(job.view.progress, { max: 2, value: 1, hidden: false });
 });
 
-test("job does not rewrite the EPUB if the first new chapter fails", async (t) => {
+test("job does not rewrite the EPUB if the first new chapter fails", async (t: TestContext): Promise<void> => {
   const job = await setupAppend(t, [7]);
   job.fetchChapter.mock.mockImplementation(async () => { throw new Error("Нет доступа."); });
   await assert.rejects(job.run(), /Первая новая глава не скачалась, исходный файл не изменён\. Причина: Нет доступа\./);
@@ -280,7 +280,7 @@ test("job does not rewrite the EPUB if the first new chapter fails", async (t) =
   assert.equal(job.download.mock.callCount(), 0);
 });
 
-test("job rejects append for formats that do not support it before fetching chapters", async (t) => {
+test("job rejects append for formats that do not support it before fetching chapters", async (t: TestContext): Promise<void> => {
   const job = await setup(t, { format: "pdf", appendFileId: "existing-file" });
   await assert.rejects(job.run(), /Формат PDF не поддерживает докачку/);
   assert.equal(job.fetchChapter.mock.callCount(), 0);
@@ -288,7 +288,7 @@ test("job rejects append for formats that do not support it before fetching chap
   assert.equal(job.download.mock.callCount(), 0);
 });
 
-test("job rejects an unavailable append file before fetching chapters", async (t) => {
+test("job rejects an unavailable append file before fetching chapters", async (t: TestContext): Promise<void> => {
   const job = await setupAppend(t, []);
   await takeAppendFile(job.plan.appendFileId!);
   await assert.rejects(job.run(), /Выбранный файл не найден/);
@@ -298,7 +298,7 @@ test("job rejects an unavailable append file before fetching chapters", async (t
   assert.equal(job.download.mock.callCount(), 0);
 });
 
-test("job stops if EPUB inspection fails instead of downloading or replacing its content", async (t) => {
+test("job stops if EPUB inspection fails instead of downloading or replacing its content", async (t: TestContext): Promise<void> => {
   const job = await setupAppend(t, []);
   const error = new Error("Название книги не совпадает.");
   job.inspect.mock.mockImplementation(async () => { throw error; });
@@ -309,7 +309,7 @@ test("job stops if EPUB inspection fails instead of downloading or replacing its
 });
 
 for (const mime of ["image/png", null]) {
-  test(`job includes cover bytes with ${mime ?? "default MIME"} in the exported book`, async (t) => {
+  test(`job includes cover bytes with ${mime ?? "default MIME"} in the exported book`, async (t: TestContext): Promise<void> => {
     const job = await setup(t, { meta: { id: "123", title: "Книга", coverUrl: "https://cover.cdnlibs.org/test.jpg" } });
     job.fetch.mock.mockImplementation(async () => new Response(Uint8Array.of(1, 2, 3), {
       headers: mime ? { "content-type": mime } : {},
@@ -324,7 +324,7 @@ for (const mime of ["image/png", null]) {
 }
 
 for (const failure of ["http", "network", "body"] as const) {
-  test(`job still saves chapters after a cover ${failure} failure`, async (t) => {
+  test(`job still saves chapters after a cover ${failure} failure`, async (t: TestContext): Promise<void> => {
     const job = await setup(t, { meta: { id: "123", title: "Книга", coverUrl: "https://cover.cdnlibs.org/test.jpg" } });
     job.fetch.mock.mockImplementation(async () => {
       if (failure === "network") throw new Error("Обложка недоступна.");
@@ -342,7 +342,7 @@ for (const failure of ["http", "network", "body"] as const) {
   });
 }
 
-test("job page reads the plan ID from its URL and displays startup failures in the DOM", async (t) => {
+test("job page reads the plan ID from its URL and displays startup failures in the DOM", async (t: TestContext): Promise<void> => {
   const job = await setup(t);
   const elements = { status: job.view.status, title: job.view.title, bar: job.view.progress };
   setGlobal(t, "document", { getElementById: (id: keyof typeof elements) => elements[id] });
@@ -357,7 +357,7 @@ test("job page reads the plan ID from its URL and displays startup failures in t
   assert.equal(job.download.mock.callCount(), 0);
 });
 
-test("job sends the selected translation identity to EPUB inspection and export", async (t) => {
+test("job sends the selected translation identity to EPUB inspection and export", async (t: TestContext): Promise<void> => {
   const selected = chapters.map((chapter) => ({ ...chapter, branchId: 4 }));
   const job = await setupAppend(t, [7], { branchId: 4, chapters: selected });
   await job.run();
@@ -367,14 +367,14 @@ test("job sends the selected translation identity to EPUB inspection and export"
   assert.deepEqual(job.fetchChapter.mock.calls.map(({ arguments: args }) => args[0].branchId), [4, 4]);
 });
 
-test("job records source identity for the main translation too", async (t) => {
+test("job records source identity for the main translation too", async (t: TestContext): Promise<void> => {
   const selected = chapters.map((chapter) => ({ ...chapter, branchId: null, key: chapter.key.replace("&branch_id=4", "") }));
   const job = await setup(t, { branchId: null, chapters: selected });
   await job.run();
   assert.deepEqual(job.exportBook.mock.calls[0]!.arguments[0].identity, { sourceKey: "ranobelib", titleId: "123", branchId: null });
 });
 
-test("job refuses mixed branches or a mismatched request key before downloading", async (t) => {
+test("job refuses mixed branches or a mismatched request key before downloading", async (t: TestContext): Promise<void> => {
   const job = await setup(t, { branchId: 4 });
   await assert.rejects(job.run(), /другой ветки/);
   assert.equal(job.fetchChapter.mock.callCount(), 0);
@@ -395,7 +395,7 @@ async function setupFb2(t: TestContext, selectedIdentity = { sourceKey: "ranobel
   return { original, ...await setup(t, { format: "fb2", branchId: 4, chapters: selected, appendFileId }) };
 }
 
-test("FB2 job uses the real exporter to skip old chapters, fill a gap and retain old content", async (t) => {
+test("FB2 job uses the real exporter to skip old chapters, fill a gap and retain old content", async (t: TestContext): Promise<void> => {
   const job = await setupFb2(t);
   await job.run();
   assert.deepEqual(job.fetchChapter.mock.calls.map(({ arguments: args }) => args[0].id), [9]);
@@ -408,14 +408,14 @@ test("FB2 job uses the real exporter to skip old chapters, fill a gap and retain
   assert.match(job.view.status.textContent, /Готово, файл сохранён/);
 });
 
-test("FB2 job stops before fetching when the file belongs to another branch", async (t) => {
+test("FB2 job stops before fetching when the file belongs to another branch", async (t: TestContext): Promise<void> => {
   const job = await setupFb2(t, { sourceKey: "ranobelib", titleId: "123", branchId: 5 });
   await assert.rejects(job.run(), /ветка перевода в FB2 не совпадают/);
   assert.equal(job.fetchChapter.mock.callCount(), 0);
   assert.equal(job.download.mock.callCount(), 0);
 });
 
-test("FB2 job skips saving when all selected chapters are present", async (t) => {
+test("FB2 job skips saving when all selected chapters are present", async (t: TestContext): Promise<void> => {
   const job = await setupFb2(t);
   const id = await storeJobPlan({ ...job.plan, chapters: [job.plan.chapters[0]!, job.plan.chapters[2]!] });
   await runJob(id, job.view);
