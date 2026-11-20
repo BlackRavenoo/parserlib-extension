@@ -28,7 +28,7 @@
     "https://cover.hentaicdn.org/*",
     "https://img3h.hentaicdn.org/*",
     "https://img2.mixlib.me/*",
-    "https://*.cdnlibs.org/*",
+    "https://*.cdnlibs.org/*"
   ],
   "browser_specific_settings": {
     "gecko": {
