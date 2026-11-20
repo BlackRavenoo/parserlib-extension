@@ -1,6 +1,6 @@
 import { SaxesParser } from "saxes";
 import type { BookIdentity } from "../core/models";
-import { isBookIdentity } from "./types";
+import { isBookIdentity } from "./helpers";
 
 const FB2_NAMESPACE = "http://www.gribuser.ru/xml/fictionbook/2.0";
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";

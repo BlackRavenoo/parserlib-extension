@@ -5,7 +5,7 @@ import { chaptersToAppend } from "../lib/append-plan";
 import { getSource } from "../sources/registry";
 import { getExporter, getFormat } from "../export/registry";
 import type { Book, BookChapter } from "../export/types";
-import { sanitizeFilename } from "../export/types";
+import { sanitizeFilename } from "../export/helpers";
 
 export interface JobView {
   status: Pick<HTMLDivElement, "textContent"> & { classList: Pick<DOMTokenList, "add"> };

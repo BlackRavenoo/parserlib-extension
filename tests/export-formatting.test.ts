@@ -4,7 +4,7 @@ import JSZip from "jszip";
 import fb2Exporter from "../src/export/fb2";
 import epubExporter from "../src/export/epub";
 import type { Book } from "../src/export/types";
-import { escapeXml } from "../src/export/types";
+import { escapeXml } from "../src/export/helpers";
 
 const book: Book = {
   title: "Тестовая книга",

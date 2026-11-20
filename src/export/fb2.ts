@@ -1,5 +1,5 @@
 import type { Book, BookChapter, Exporter } from "./types";
-import { escapeXml, isBookIdentity } from "./types";
+import { escapeXml, isBookIdentity } from "./helpers";
 import { renderTextChunk } from "./text";
 import { openExistingFb2 } from "./fb2-existing";
 

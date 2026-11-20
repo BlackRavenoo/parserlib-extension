@@ -1,5 +1,5 @@
 import type { TextChunk } from "../core/models";
-import { escapeXml } from "./types";
+import { escapeXml } from "./helpers";
 
 export type TextMarkup = "fb2" | "xhtml";
 
