@@ -3,7 +3,7 @@ import test from "node:test";
 import type { TestContext } from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { runJob } from "../src/job/run";
-import type { JobView } from "../src/job/run";
+import type { JobMetrics, JobView } from "../src/job/run";
 import { storeJobPlan } from "../src/lib/job-plan";
 import type { JobPlan } from "../src/lib/job-plan";
 import { storeAppendFile, takeAppendFile } from "../src/lib/append-file";
@@ -33,10 +33,12 @@ function content(chapter: ChapterRef): ChapterContent {
 async function setup(t: TestContext, overrides: Partial<JobPlan> = {}) {
   const session = mockSession(t);
   const classes = new Set<string>();
+  const metrics: JobMetrics[] = [];
   const view = {
     status: { textContent: "", classList: { add: (name: string) => { classes.add(name); } } },
     title: { textContent: "Загрузка…" },
     progress: { max: 1, value: 0, hidden: true },
+    showMetrics: (value: JobMetrics) => { metrics.push(value); },
   } satisfies JobView;
   const plan: JobPlan = {
     sourceKey: "ranobelib",
@@ -44,6 +46,7 @@ async function setup(t: TestContext, overrides: Partial<JobPlan> = {}) {
     format: "epub",
     meta: { id: "123", title: "Книга: главы", author: "Автор" },
     chapters,
+    showMetrics: true,
     ...overrides,
   };
   const id = await storeJobPlan(plan);
@@ -66,7 +69,7 @@ async function setup(t: TestContext, overrides: Partial<JobPlan> = {}) {
     assert.equal(fetchChapters.mock.callCount(), 0);
   });
   return {
-    plan, id, view, classes, session, source, exporter, blob,
+    plan, id, view, classes, metrics, session, source, exporter, blob,
     fetchChapter, exportBook, download, createUrl, revokeUrl, fetch, warn,
     run: () => runJob(id, view),
   };
@@ -134,6 +137,48 @@ test("job waits for each chapter before fetching the next and exporting", { time
   assert.deepEqual(job.fetchChapter.mock.calls.map(({ arguments: args }) => args[1]), [null, null, null]);
 });
 
+test("job reports image bytes and times only the exporter", async (t) => {
+  const job = await setup(t, {
+    meta: { id: "123", title: "Книга", coverUrl: "https://cover.cdnlibs.org/test.jpg" },
+  });
+  let now = 0;
+  const timeOrigin = 1_800_000_000_000;
+  setGlobal(t, "performance", { timeOrigin, now: () => now });
+  job.fetchChapter.mock.mockImplementation(async (chapter) => {
+    now += 500;
+    return content(chapter);
+  });
+  job.fetch.mock.mockImplementation(async () => {
+    now += 200;
+    return new Response(Uint8Array.of(11, 22));
+  });
+  job.exportBook.mock.mockImplementation(async () => {
+    now += 80;
+    return job.blob;
+  });
+  job.download.mock.mockImplementation(async () => {
+    now += 2_000;
+    return 42;
+  });
+
+  await job.run();
+
+  assert.deepEqual(job.metrics.map(({ imageBytes }) => imageBytes), [1, 2, 3, 5, 5]);
+  assert.deepEqual(job.metrics.at(-1)?.assembly, {
+    startedAt: timeOrigin + 1_700,
+    finishedAt: timeOrigin + 1_780,
+    durationMs: 80,
+    outputBytes: job.blob.size,
+  });
+});
+
+test("job downloads without reporting metrics when the plan does not enable them", async (t) => {
+  const job = await setup(t, { showMetrics: undefined, format: "pdf" });
+  await job.run();
+  assert.deepEqual(job.metrics, []);
+  assert.equal(job.download.mock.callCount(), 1);
+});
+
 test("job saves only completed chapters and stops fetching after a failure", async (t: TestContext): Promise<void> => {
   const job = await setup(t);
   job.fetchChapter.mock.mockImplementation(async (chapter) => {
@@ -176,6 +221,8 @@ test("job propagates export errors without creating a download URL", async (t: T
   const error = new Error("Не удалось собрать EPUB.");
   job.exportBook.mock.mockImplementation(async () => { throw error; });
   await assert.rejects(job.run(), (reason) => reason === error);
+  assert.ok(job.metrics.at(-1)?.assembly);
+  assert.equal(job.metrics.at(-1)?.assembly?.outputBytes, undefined);
   assert.equal(job.createUrl.mock.callCount(), 0);
   assert.equal(job.download.mock.callCount(), 0);
   assert.equal(job.revokeUrl.mock.callCount(), 0);
@@ -212,6 +259,9 @@ test("job keeps the object URL until the browser finishes accepting the download
 test("job appends missing chapters including gaps and passes the original EPUB to the exporter", async (t: TestContext): Promise<void> => {
   const job = await setupAppend(t, [9]);
   await job.run();
+  assert.equal(job.metrics.at(-1)?.originalFileBytes, job.original.size);
+  assert.equal(job.metrics.at(-1)?.imageBytes, 2);
+  assert.equal(job.metrics.at(-1)?.assembly?.outputBytes, job.blob.size);
   assert.deepEqual(job.fetchChapter.mock.calls.map(({ arguments: args }) => args), [chapters[0], chapters[2]].map((chapter) => [chapter, "test-token"]));
   assert.equal(job.inspect.mock.callCount(), 1);
   const [file, title] = job.inspect.mock.calls[0]!.arguments;
@@ -344,7 +394,12 @@ for (const failure of ["http", "network", "body"] as const) {
 
 test("job page reads the plan ID from its URL and displays startup failures in the DOM", async (t: TestContext): Promise<void> => {
   const job = await setup(t);
-  const elements = { status: job.view.status, title: job.view.title, bar: job.view.progress };
+  const elements = {
+    status: job.view.status,
+    title: job.view.title,
+    bar: job.view.progress,
+    metrics: { hidden: true, textContent: "" },
+  };
   setGlobal(t, "document", { getElementById: (id: keyof typeof elements) => elements[id] });
   setGlobal(t, "location", { search: `?plan=${encodeURIComponent(job.id)}` });
   job.fetchChapter.mock.mockImplementation(async () => { throw new Error("Нет доступа."); });

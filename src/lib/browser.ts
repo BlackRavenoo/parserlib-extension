@@ -16,6 +16,16 @@ function promisify<T>(fn: (cb: (result: T) => void) => void): Promise<T> {
 
 export const ext = {
   storage: {
+    local: {
+      get: (key: string): Promise<Record<string, unknown>> =>
+        hasNativeBrowser
+          ? browser!.storage.local.get(key)
+          : promisify((cb) => chrome.storage.local.get(key, cb)),
+      set: (items: Record<string, unknown>): Promise<void> =>
+        hasNativeBrowser
+          ? browser!.storage.local.set(items)
+          : promisify((cb) => chrome.storage.local.set(items, () => cb(undefined))),
+    },
     session: {
       get: (keys: string[] | string | null): Promise<Record<string, unknown>> =>
         hasNativeBrowser

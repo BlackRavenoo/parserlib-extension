@@ -27,6 +27,48 @@ const appendOption = document.getElementById("append-option") as HTMLDivElement;
 const appendEnabled = document.getElementById("append-enabled") as HTMLInputElement;
 const appendFileRow = document.getElementById("append-file-row") as HTMLDivElement;
 const appendFileInput = document.getElementById("append-file") as HTMLInputElement;
+const settingsToggle = document.getElementById("settings-toggle") as HTMLButtonElement;
+const preferences = document.getElementById("preferences") as HTMLElement;
+const downloadView = document.getElementById("download-view") as HTMLElement;
+const showMetricsInput = document.getElementById("show-metrics") as HTMLInputElement;
+const preferencesStatus = document.getElementById("preferences-status") as HTMLParagraphElement;
+
+const METRICS_KEY = "show-export-metrics";
+let showMetrics = false;
+let settingsReady = ext.storage.local.get(METRICS_KEY).then((stored) => {
+  showMetrics = stored[METRICS_KEY] === true;
+  showMetricsInput.checked = showMetrics;
+}).catch(() => {
+  preferencesStatus.textContent = "Не удалось загрузить настройки.";
+}).finally(() => {
+  showMetricsInput.disabled = false;
+});
+
+settingsToggle.addEventListener("click", () => {
+  const open = preferences.hidden;
+  preferences.hidden = !open;
+  downloadView.hidden = open;
+  settingsToggle.setAttribute("aria-expanded", String(open));
+  const label = open ? "К загрузке" : "Настройки";
+  settingsToggle.setAttribute("aria-label", label);
+  settingsToggle.title = label;
+  settingsToggle.textContent = open ? "←" : "⚙";
+});
+
+showMetricsInput.addEventListener("change", async () => {
+  const checked = showMetricsInput.checked;
+  showMetricsInput.disabled = true;
+  preferencesStatus.textContent = "";
+  settingsReady = ext.storage.local.set({ [METRICS_KEY]: checked }).then(() => {
+    showMetrics = checked;
+  }).catch(() => {
+    showMetricsInput.checked = showMetrics;
+    preferencesStatus.textContent = "Не удалось сохранить настройку.";
+  }).finally(() => {
+    showMetricsInput.disabled = false;
+  });
+  await settingsReady;
+});
 
 const SOURCE_LABELS: Record<string, string> = {
   mangalib: "MangaLib",
@@ -251,6 +293,7 @@ form.addEventListener("submit", async (event) => {
   let appendFileId: string | undefined;
   let planId: string | undefined;
   try {
+    await settingsReady;
     if (appendFile) appendFileId = await storeAppendFile(appendFile);
     planId = await storeJobPlan({
       sourceKey: currentKey,
@@ -259,6 +302,7 @@ form.addEventListener("submit", async (event) => {
       meta: currentMeta,
       chapters: selected,
       branchId,
+      ...(showMetrics && { showMetrics }),
       ...(appendFileId && { appendFileId }),
     });
     await ext.tabs.create({ url: chrome.runtime.getURL(`job/index.html?plan=${encodeURIComponent(planId)}`) });

@@ -8,6 +8,7 @@
     "build:watch": "node build.mjs --watch",
     "test": "node scripts/test.mjs",
     "coverage": "c8 --all --src src --include \"src/**/*.ts\" --exclude-after-remap --reporter text --reporter lcov --reporter html --reporter json-summary --check-coverage --lines 90 tsx --test tests/*.test.ts",
+    "profile:firefox": "node scripts/profile-firefox.mjs",
     "zip": "node build.mjs --zip"
   },
   "devDependencies": {

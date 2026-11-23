@@ -10,6 +10,7 @@ import { Element, popupElements } from "./helpers/popup";
 
 test("popup restores volumes from cache and submits complete selected volumes in chapter order without another API call", { timeout: 5000 }, async (t) => {
   const session = mockSession(t);
+  t.mock.method(ext.storage.local, "get", async () => ({ "show-export-metrics": true }));
   const elements = popupElements();
   const element = (id: string) => elements[id]!;
   setGlobal(t, "document", { getElementById: element, createElement: () => new Element() });
@@ -49,6 +50,7 @@ test("popup restores volumes from cache and submits complete selected volumes in
   await cacheRead.promise;
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(element("branch").value, "default");
+  assert.equal(element("show-metrics").checked, true);
   assert.equal(element("volumes-all").checked, true);
   assert.equal(element("range-to").value, "3");
   assert.equal(element("chapter-count").textContent, "Найдено глав: 4");
@@ -62,6 +64,7 @@ test("popup restores volumes from cache and submits complete selected volumes in
   assert.deepEqual(plan.chapters, [chapters[0], chapters[1], chapters[3]]);
   assert.equal(plan.meta.title, "Книга");
   assert.equal(plan.branchId, null);
+  assert.equal(plan.showMetrics, true);
   assert.equal(fetchChapters.mock.callCount(), 0);
   assert.equal(fetchTitle.mock.callCount(), 0);
 });

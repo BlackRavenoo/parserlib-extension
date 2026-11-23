@@ -9,6 +9,7 @@ export interface JobPlan {
   chapters: ChapterRef[];
   appendFileId?: string;
   branchId?: number | null;
+  showMetrics?: boolean;
 }
 
 const PLAN_KEY_PREFIX = "job-plan:";

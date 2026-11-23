@@ -12,6 +12,8 @@ import { tokenFingerprint } from "../src/lib/popup-cache";
 
 test("popup requires a translation, resets its range, and stores only the selected branch in the job plan", { timeout: 5000 }, async (t) => {
   const session = mockSession(t);
+  t.mock.method(ext.storage.local, "get", async () => ({}));
+  const saveSettings = t.mock.method(ext.storage.local, "set", async (_items: Record<string, unknown>) => {});
   const elements = popupElements();
   const element = (id: string) => elements[id]!;
   setGlobal(t, "document", {
@@ -90,6 +92,7 @@ test("popup requires a translation, resets its range, and stores only the select
     .flat().find(([key]) => key.startsWith("job-plan:"))![1] as JobPlan;
   assert.deepEqual(filteredPlan.chapters, [chapters[2], chapters[4]]);
   assert.equal(filteredPlan.branchId, 41);
+  assert.equal(filteredPlan.showMetrics, undefined);
   assert.equal([...session.stored.keys()].some((key) => key.startsWith("job-plan:")), false);
   element("volumes-all").checked = false;
   await element("volumes-all").trigger("change");
@@ -127,11 +130,28 @@ test("popup requires a translation, resets its range, and stores only the select
   assert.equal(element("start").disabled, false);
   assert.equal(close.mock.callCount(), 0);
   create.mock.mockImplementation(async () => ({ id: 6 }) as chrome.tabs.Tab);
+  assert.equal(element("show-metrics").checked, false);
+  await element("settings-toggle").trigger("click");
+  assert.equal(element("preferences").hidden, false);
+  assert.equal(element("download-view").hidden, true);
+  assert.equal(element("settings-toggle").attributes.get("aria-expanded"), "true");
+  element("show-metrics").checked = true;
+  await element("show-metrics").trigger("change");
+  assert.deepEqual(saveSettings.mock.calls[0]?.arguments, [{ "show-export-metrics": true }]);
+  saveSettings.mock.mockImplementationOnce(async () => { throw new Error("Хранилище недоступно."); });
+  element("show-metrics").checked = false;
+  await element("show-metrics").trigger("change");
+  assert.equal(element("show-metrics").checked, true);
+  assert.match(element("preferences-status").textContent, /Не удалось сохранить/);
+  await element("settings-toggle").trigger("click");
+  assert.equal(element("download-view").hidden, false);
+  assert.equal(element("preferences").hidden, true);
   await element("settings-form").trigger("submit");
   const plan = [...session.stored.entries()].find(([key]) => key.startsWith("job-plan:"))![1] as JobPlan;
   assert.equal(plan.branchId, 42);
   assert.deepEqual(plan.chapters, [chapters[1]]);
   assert.equal(plan.token, "test-token");
+  assert.equal(plan.showMetrics, true);
   assert.equal(close.mock.callCount(), 1);
   assert.equal(fetchChapters.mock.callCount(), 1);
   const cache = session.stored.get("popup-data:5") as { chapters: ChapterRef[]; identity: string };

@@ -7,10 +7,22 @@ import { getExporter, getFormat } from "../export/registry";
 import type { Book, BookChapter } from "../export/types";
 import { sanitizeFilename } from "../export/helpers";
 
+export interface JobMetrics {
+  imageBytes: number;
+  originalFileBytes?: number;
+  assembly?: {
+    startedAt: number;
+    finishedAt: number;
+    durationMs: number;
+    outputBytes?: number;
+  };
+}
+
 export interface JobView {
   status: Pick<HTMLDivElement, "textContent"> & { classList: Pick<DOMTokenList, "add"> };
   title: Pick<HTMLHeadingElement, "textContent">;
   progress: Pick<HTMLProgressElement, "max" | "value" | "hidden">;
+  showMetrics(metrics: JobMetrics): void;
 }
 
 export async function runJob(planId: string, view: JobView): Promise<void> {
@@ -31,6 +43,7 @@ export async function runJob(planId: string, view: JobView): Promise<void> {
 
   const plan = await takeJobPlan(planId);
   if (!plan) throw new Error("Не найдены параметры загрузки. Вернитесь в popup и запустите её снова.");
+  const showMetrics = plan.showMetrics === true;
   if (plan.branchId !== undefined && plan.chapters.some((chapter) => {
     const requestedBranch = new URLSearchParams(chapter.key).get("branch_id");
     return (chapter.branchId ?? null) !== plan.branchId ||
@@ -69,6 +82,7 @@ export async function runJob(planId: string, view: JobView): Promise<void> {
   }
 
   const bookChapters: BookChapter[] = [];
+  let imageBytes = 0;
   let failure: Error | null = null;
 
   for (let i = 0; i < chapters.length; i++) {
@@ -78,11 +92,17 @@ export async function runJob(planId: string, view: JobView): Promise<void> {
     try {
       const content = await source.fetchChapter(chapterRef, plan.token);
       bookChapters.push({ id: chapterRef.id, title: chapterRef.title, chunks: content.chunks });
+      if (showMetrics) {
+        for (const chunk of content.chunks) {
+          if (chunk.kind === "image") imageBytes += chunk.data.byteLength;
+        }
+      }
     } catch (err) {
       failure = err instanceof Error ? err : new Error(String(err));
       console.error(`[parserlib] глава ${chapterRef.id} не скачана`, failure);
       break;
     }
+    if (showMetrics) view.showMetrics({ imageBytes, originalFileBytes: appendFile?.size });
   }
 
   if (failure && bookChapters.length === 0) {
@@ -94,16 +114,10 @@ export async function runJob(planId: string, view: JobView): Promise<void> {
   }
 
   const downloaded = bookChapters.length;
-  setStatus(
-    failure
-      ? `Скачано глав: ${downloaded} из ${chapters.length}. Собираю файл…`
-      : "Собираю файл…",
-    downloaded,
-    chapters.length
-  );
 
   let coverImage: { data: Uint8Array; mime: string } | undefined;
   if (!appendFile && plan.meta.coverUrl) {
+    setStatus("Скачиваю обложку…", downloaded, chapters.length);
     try {
       const res = await fetch(plan.meta.coverUrl);
       if (res.ok) {
@@ -126,7 +140,33 @@ export async function runJob(planId: string, view: JobView): Promise<void> {
     chapters: bookChapters,
     ...(identity && { identity }),
   };
-  const blob = appendFile ? await exporter.append!(book, appendFile) : await exporter.export(book);
+  imageBytes += coverImage?.data.byteLength ?? 0;
+  const metrics = { imageBytes, originalFileBytes: appendFile?.size };
+  if (showMetrics) view.showMetrics(metrics);
+  setStatus(
+    failure ? `Скачано глав: ${downloaded} из ${chapters.length}. Собираю файл…` : "Собираю файл…",
+    downloaded,
+    chapters.length
+  );
+
+  let blob: Blob | undefined;
+  const started = showMetrics ? performance.now() : undefined;
+  try {
+    blob = appendFile ? await exporter.append!(book, appendFile) : await exporter.export(book);
+  } finally {
+    if (started !== undefined) {
+      const finished = performance.now();
+      view.showMetrics({
+        ...metrics,
+        assembly: {
+          startedAt: performance.timeOrigin + started,
+          finishedAt: performance.timeOrigin + finished,
+          durationMs: finished - started,
+          outputBytes: blob?.size,
+        },
+      });
+    }
+  }
 
   const objectUrl = URL.createObjectURL(blob);
   try {

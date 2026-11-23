@@ -9,6 +9,11 @@
     select, button, input[type="file"] { width: 100%; box-sizing: border-box; padding: 6px; margin-top: 4px; }
     button { margin-top: 12px; cursor: pointer; }
     button:disabled { cursor: default; opacity: 0.5; }
+    .popup-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    #settings-toggle { width: 32px; height: 32px; margin: 0; padding: 0; font-size: 18px; line-height: 1; }
+    #preferences-heading { font-size: 14px; margin: 8px 0 0; }
+    #preferences-status { color: #b00020; margin: 8px 0 0; }
+    #preferences-status:empty { display: none; }
     #source { margin: 4px 0 8px; overflow-wrap: anywhere; }
     #range { display: block; }
     #status { color: #555; white-space: pre-wrap; }
@@ -24,6 +29,17 @@
   </style>
 </head>
 <body>
+  <header class="popup-header">
+    <strong>ParserLib</strong>
+    <button id="settings-toggle" type="button" aria-label="Настройки" title="Настройки"
+      aria-expanded="false" aria-controls="preferences">⚙</button>
+  </header>
+  <section id="preferences" aria-labelledby="preferences-heading" hidden>
+    <h2 id="preferences-heading">Настройки</h2>
+    <label class="checkbox"><input id="show-metrics" type="checkbox" disabled />Показывать метрики экспорта</label>
+    <p id="preferences-status" role="status"></p>
+  </section>
+  <main id="download-view">
   <div id="source">Определяю страницу…</div>
   <div id="status" role="status"></div>
   <form id="settings-form" hidden>
@@ -57,6 +73,7 @@
     <p id="chapter-count"></p>
     <button id="start" type="submit" disabled>Скачать</button>
   </form>
+  </main>
   <script type="module" src="./popup.js"></script>
 </body>
 </html>

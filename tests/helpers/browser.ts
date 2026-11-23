@@ -9,7 +9,10 @@ type BrowserKind = "Chrome" | "Firefox";
 function createApi(t: TestContext) {
   return {
     runtime: {} as { lastError?: { message: string } },
-    storage: { session: { get: t.mock.fn(), set: t.mock.fn(), remove: t.mock.fn() } },
+    storage: {
+      local: { get: t.mock.fn(), set: t.mock.fn() },
+      session: { get: t.mock.fn(), set: t.mock.fn(), remove: t.mock.fn() },
+    },
     tabs: { query: t.mock.fn(), create: t.mock.fn() },
     scripting: { executeScript: t.mock.fn() },
     downloads: { download: t.mock.fn() },
@@ -29,6 +32,7 @@ interface Operation {
 }
 
 const stored = { "job-plan:test": { token: "test-token" } };
+const preferences = { "show-export-metrics": true };
 const items = { "job-plan:test": { token: "new-token" } };
 const tab = { id: 42, url: "https://ranobelib.me/ru/book/test" };
 const createOptions = { url: "job/index.html?id=test", active: true };
@@ -37,6 +41,16 @@ const injection = { target: { tabId: 42 }, func: (value: string) => value, args:
 const scriptResults = [{ frameId: 0, result: "test-token" }, { frameId: 1, result: null }];
 
 const operations: Operation[] = [
+  {
+    name: "storage.local.get", method: (api) => api.storage.local.get,
+    invoke: (ext) => ext.storage.local.get("show-export-metrics"),
+    args: ["show-export-metrics"], result: preferences, expected: preferences,
+  },
+  {
+    name: "storage.local.set", method: (api) => api.storage.local.set,
+    invoke: (ext) => ext.storage.local.set({ "show-export-metrics": false }),
+    args: [{ "show-export-metrics": false }], result: undefined, expected: undefined,
+  },
   ...["job-plan:test", ["job-plan:test", "popup-cache:42"], null].map((keys, index) => ({
     name: `storage.session.get(${JSON.stringify(keys)})`,
     method: (api: Api) => api.storage.session.get,
