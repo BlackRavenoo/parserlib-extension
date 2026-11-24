@@ -4,7 +4,7 @@ import { takeAppendFile } from "../lib/append-file";
 import { chaptersToAppend } from "../lib/append-plan";
 import { getSource } from "../sources/registry";
 import { getExporter, getFormat } from "../export/registry";
-import type { Book, BookChapter } from "../export/types";
+import type { Book, BookChapter, ExportPageMetrics } from "../export/types";
 import { sanitizeFilename } from "../export/helpers";
 
 export interface JobMetrics {
@@ -15,6 +15,7 @@ export interface JobMetrics {
     finishedAt: number;
     durationMs: number;
     outputBytes?: number;
+    pageMetrics?: ExportPageMetrics;
   };
 }
 
@@ -150,9 +151,11 @@ export async function runJob(planId: string, view: JobView): Promise<void> {
   );
 
   let blob: Blob | undefined;
+  let pageMetrics: ExportPageMetrics | undefined;
+  const reportPages = (value: ExportPageMetrics) => { pageMetrics = value; };
   const started = showMetrics ? performance.now() : undefined;
   try {
-    blob = appendFile ? await exporter.append!(book, appendFile) : await exporter.export(book);
+    blob = appendFile ? await exporter.append!(book, appendFile) : await exporter.export(book, showMetrics ? reportPages : undefined);
   } finally {
     if (started !== undefined) {
       const finished = performance.now();
@@ -163,6 +166,7 @@ export async function runJob(planId: string, view: JobView): Promise<void> {
           finishedAt: performance.timeOrigin + finished,
           durationMs: finished - started,
           outputBytes: blob?.size,
+          ...(pageMetrics && { pageMetrics }),
         },
       });
     }

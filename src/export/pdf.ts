@@ -1,5 +1,7 @@
 import type { Book, Exporter } from "./types";
 import type { TextChunk, TextStyle } from "../core/models";
+import { readPdfJpeg } from "./pdf-jpeg";
+import type { PdfJpegInfo } from "./pdf-jpeg";
 
 const PAGE_WIDTH = 1240;
 const PAGE_HEIGHT = 1754;
@@ -8,10 +10,32 @@ const LINE_HEIGHT = 40;
 const PDF_PAGE_WIDTH = 595.28;
 const PDF_PAGE_HEIGHT = 841.89;
 
-interface RasterPage {
+interface ImagePlacement {
+  x: number;
+  y: number;
   width: number;
   height: number;
+}
+
+interface PdfPage extends PdfJpegInfo {
   jpeg: Uint8Array;
+  placement?: ImagePlacement;
+}
+
+interface PendingJpeg extends PdfJpegInfo {
+  jpeg: Uint8Array;
+  mime: string;
+  placement: ImagePlacement;
+}
+
+interface RasterCanvas {
+  canvas: HTMLCanvasElement;
+  context: CanvasRenderingContext2D;
+}
+
+interface ImageDimensions {
+  width: number;
+  height: number;
 }
 
 function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
@@ -161,11 +185,36 @@ function getContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   return context;
 }
 
+function fittedImage({ width, height }: ImageDimensions): ImageDimensions {
+  const scale = Math.min((PAGE_WIDTH - MARGIN * 2) / width, (PAGE_HEIGHT - MARGIN * 2) / height);
+  return { width: width * scale, height: height * scale };
+}
+
+function drawImage(
+  context: CanvasRenderingContext2D,
+  image: ImageBitmap,
+  { x, y, width, height }: ImagePlacement
+): void {
+  context.drawImage(image, x, y, width, height);
+}
+
+function decodeImage(data: Uint8Array, mime: string): Promise<ImageBitmap> {
+  return createImageBitmap(new Blob([data.slice().buffer as ArrayBuffer], { type: mime }));
+}
+
 function bytes(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
-function makePdf(pages: RasterPage[]): Blob {
+function pageImageMatrix(placement?: ImagePlacement): string {
+  if (!placement) return `${PDF_PAGE_WIDTH} 0 0 ${PDF_PAGE_HEIGHT} 0 0`;
+  const scaleX = PDF_PAGE_WIDTH / PAGE_WIDTH;
+  const scaleY = PDF_PAGE_HEIGHT / PAGE_HEIGHT;
+  return `${(placement.width * scaleX).toFixed(5)} 0 0 ${(placement.height * scaleY).toFixed(5)} ` +
+    `${(placement.x * scaleX).toFixed(5)} ${((PAGE_HEIGHT - placement.y - placement.height) * scaleY).toFixed(5)}`;
+}
+
+function makePdf(pages: PdfPage[]): Blob {
   const objectCount = 2 + pages.length * 3;
   const parts: Uint8Array[] = [bytes("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n")];
   const offsets = new Array<number>(objectCount + 1).fill(0);
@@ -189,7 +238,7 @@ function makePdf(pages: RasterPage[]): Blob {
     const imageId = pageId + 1;
     const contentId = pageId + 2;
     const content = bytes(
-      `q\n${PDF_PAGE_WIDTH} 0 0 ${PDF_PAGE_HEIGHT} 0 0 cm\n/Im0 Do\nQ`
+      `q\n${pageImageMatrix(page.placement)} cm\n/Im0 Do\nQ`
     );
 
     addObject(pageId, [bytes(
@@ -199,7 +248,7 @@ function makePdf(pages: RasterPage[]): Blob {
     addObject(imageId, [
       bytes(
         `<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} ` +
-        `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${page.jpeg.length} >>\nstream\n`
+        `/ColorSpace ${page.colorSpace} /BitsPerComponent 8 /Filter /DCTDecode /Length ${page.jpeg.length} >>\nstream\n`
       ),
       page.jpeg,
       bytes("\nendstream"),
@@ -220,47 +269,78 @@ function makePdf(pages: RasterPage[]): Blob {
 const pdfExporter: Exporter = {
   extension: "pdf",
 
-  async export(book: Book): Promise<Blob> {
-    const pages: RasterPage[] = [];
-    let canvas = document.createElement("canvas");
-    canvas.width = PAGE_WIDTH;
-    canvas.height = PAGE_HEIGHT;
-    let context = getContext(canvas);
+  async export(book: Book, reportPages): Promise<Blob> {
+    const pages: PdfPage[] = [];
+    let raster: RasterCanvas | undefined;
+    let measurementContext: CanvasRenderingContext2D | undefined;
+    let pendingJpeg: PendingJpeg | undefined;
+    let pagesWithoutCanvas = 0;
+    let y = MARGIN;
 
-    const startPage = () => {
-      canvas = document.createElement("canvas");
+    const getRaster = () => {
+      if (raster) return raster;
+      const canvas = document.createElement("canvas");
       canvas.width = PAGE_WIDTH;
       canvas.height = PAGE_HEIGHT;
-      context = getContext(canvas);
+      const context = getContext(canvas);
       context.fillStyle = "#fff";
       context.fillRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT);
       context.fillStyle = "#161616";
-      return MARGIN;
+      raster = { canvas, context };
+      measurementContext = context;
+      return raster;
     };
 
-    context.fillStyle = "#fff";
-    context.fillRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT);
-    context.fillStyle = "#161616";
-    let y = MARGIN;
+    const paintJpeg = async (context: CanvasRenderingContext2D, page: PendingJpeg) => {
+      const image = await decodeImage(page.jpeg, page.mime);
+      try {
+        drawImage(context, image, page.placement);
+      } finally {
+        image.close();
+      }
+    };
+
+    const rasterContext = async () => {
+      const { context } = getRaster();
+      if (pendingJpeg) {
+        await paintJpeg(context, pendingJpeg);
+        pendingJpeg = undefined;
+      }
+      return context;
+    };
 
     const finishPage = async () => {
-      pages.push({ width: PAGE_WIDTH, height: PAGE_HEIGHT, jpeg: await canvasToJpeg(canvas) });
+      if (pendingJpeg) {
+        pages.push(pendingJpeg);
+        pagesWithoutCanvas++;
+        pendingJpeg = undefined;
+      } else {
+        pages.push({
+          width: PAGE_WIDTH,
+          height: PAGE_HEIGHT,
+          jpeg: await canvasToJpeg(getRaster().canvas),
+          colorSpace: "/DeviceRGB",
+        });
+      }
+      raster = undefined;
+      y = MARGIN;
     };
 
     const ensureSpace = async (height: number) => {
       if (y + height > PAGE_HEIGHT - MARGIN) {
         await finishPage();
-        y = startPage();
       }
     };
 
     const drawText = async (text: string, font: string, lineHeight: number, gapAfter: number) => {
-      context!.font = font;
-      const lines = wrapText(context!, text, PAGE_WIDTH - MARGIN * 2);
+      const measure = measurementContext ?? getRaster().context;
+      measure.font = font;
+      const lines = wrapText(measure, text, PAGE_WIDTH - MARGIN * 2);
       for (const line of lines) {
         await ensureSpace(lineHeight);
-        context!.font = font;
-        context!.fillText(line, MARGIN, y);
+        const context = await rasterContext();
+        context.font = font;
+        context.fillText(line, MARGIN, y);
         y += lineHeight;
       }
       y += gapAfter;
@@ -270,14 +350,17 @@ const pdfExporter: Exporter = {
       const headingLevel = paragraph[0]?.headingLevel;
       const fontSize = headingLevel ? Math.max(28, 40 - headingLevel * 2) : 26;
       const lineHeight = headingLevel ? fontSize + 16 : LINE_HEIGHT;
-      const lines = wrapStyledText(context!, paragraph, PAGE_WIDTH - MARGIN * 2, fontSize);
+      const lines = wrapStyledText(measurementContext ?? getRaster().context, paragraph, PAGE_WIDTH - MARGIN * 2, fontSize);
       for (const line of lines) {
         await ensureSpace(lineHeight);
-        let x = MARGIN;
-        for (const segment of line) {
-          context!.font = fontFor(headingLevel ? [...segment.styles, "strong"] : segment.styles, fontSize);
-          context!.fillText(segment.text, x, y);
-          x += context!.measureText(segment.text).width;
+        if (line.length > 0) {
+          const context = await rasterContext();
+          let x = MARGIN;
+          for (const segment of line) {
+            context.font = fontFor(headingLevel ? [...segment.styles, "strong"] : segment.styles, fontSize);
+            context.fillText(segment.text, x, y);
+            x += context.measureText(segment.text).width;
+          }
         }
         y += lineHeight;
       }
@@ -287,18 +370,14 @@ const pdfExporter: Exporter = {
     if (book.coverImage) {
       let cover: ImageBitmap | undefined;
       try {
-        cover = await createImageBitmap(
-          new Blob([book.coverImage.data.slice().buffer as ArrayBuffer], { type: book.coverImage.mime })
-        );
+        cover = await decodeImage(book.coverImage.data, book.coverImage.mime);
       } catch (err) {
         console.warn("[parserlib] обложка не распознана, PDF будет без неё", err);
       }
       if (cover) {
         try {
-          const scale = Math.min((PAGE_WIDTH - MARGIN * 2) / cover.width, (PAGE_HEIGHT - MARGIN * 2) / cover.height);
-          const width = cover.width * scale;
-          const height = cover.height * scale;
-          context.drawImage(cover, (PAGE_WIDTH - width) / 2, y, width, height);
+          const { width, height } = fittedImage(cover);
+          drawImage(getRaster().context, cover, { x: (PAGE_WIDTH - width) / 2, y, width, height });
           y += height + 48;
         } finally {
           cover.close();
@@ -327,25 +406,32 @@ const pdfExporter: Exporter = {
           continue;
         }
 
-        const image = await createImageBitmap(
-          new Blob([chunk.data.slice().buffer as ArrayBuffer], { type: chunk.mime || "image/jpeg" })
-        );
-        const scale = Math.min(
-          (PAGE_WIDTH - MARGIN * 2) / image.width,
-          (PAGE_HEIGHT - MARGIN * 2) / image.height
-        );
-        const width = image.width * scale;
-        const height = image.height * scale;
-        await ensureSpace(height + 24);
-        context!.drawImage(image, (PAGE_WIDTH - width) / 2, y, width, height);
-        image.close();
-        y += height + 24;
+        const mime = chunk.mime || "image/jpeg";
+        const jpeg = readPdfJpeg(chunk.data);
+        const bitmap = jpeg ? undefined : await decodeImage(chunk.data, mime);
+        try {
+          const { width, height } = fittedImage(jpeg ?? bitmap!);
+          await ensureSpace(height + 24);
+          const placement = { x: (PAGE_WIDTH - width) / 2, y, width, height };
+          if (jpeg) {
+            const pageImage = { ...jpeg, jpeg: chunk.data, mime, placement };
+            if (raster || pendingJpeg) await paintJpeg(await rasterContext(), pageImage);
+            else pendingJpeg = pageImage;
+          } else {
+            drawImage(await rasterContext(), bitmap!, placement);
+          }
+          y += height + 24;
+        } finally {
+          bitmap?.close();
+        }
         chunkIndex++;
       }
     }
 
     await finishPage();
-    return makePdf(pages);
+    const blob = makePdf(pages);
+    reportPages?.({ totalPages: pages.length, pagesWithoutCanvas });
+    return blob;
   },
 };
 

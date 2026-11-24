@@ -10,7 +10,7 @@ import { storeAppendFile, takeAppendFile } from "../src/lib/append-file";
 import { ext } from "../src/lib/browser";
 import { getSource } from "../src/sources/registry";
 import { getExporter } from "../src/export/registry";
-import type { Book } from "../src/export/types";
+import type { Book, ExportPageMetrics } from "../src/export/types";
 import fb2Exporter from "../src/export/fb2";
 import type { ChapterContent, ChapterRef } from "../src/sources/types";
 import { mockSession, setGlobal } from "./helpers/extension";
@@ -56,7 +56,7 @@ async function setup(t: TestContext, overrides: Partial<JobPlan> = {}) {
   const fetchTitle = t.mock.method(source, "fetchTitle");
   const fetchChapters = t.mock.method(source, "fetchChapters");
   const blob = new Blob(["готовая книга"], { type: "application/epub+zip" });
-  const exportBook = t.mock.method(exporter, "export", async (_book: Book) => blob);
+  const exportBook = t.mock.method(exporter, "export", async (_book: Book, _reportPages?: (pages: ExportPageMetrics) => void) => blob);
   const download = t.mock.method(ext.downloads, "download", async (_options: chrome.downloads.DownloadOptions) => 42);
   const createUrl = t.mock.method(URL, "createObjectURL", (_blob: Blob) => "blob:test-job");
   const revokeUrl = t.mock.method(URL, "revokeObjectURL", (_url: string) => {});
@@ -96,12 +96,12 @@ test("job consumes its plan, preserves selected chapters and saves the exported 
 
   assert.equal(job.session.stored.size, 0);
   assert.deepEqual(job.fetchChapter.mock.calls.map(({ arguments: args }) => args), chapters.map((chapter) => [chapter, "test-token"]));
-  assert.deepEqual(job.exportBook.mock.calls[0]!.arguments, [{
+  assert.deepEqual(job.exportBook.mock.calls[0]!.arguments[0], {
     title: job.plan.meta.title,
     author: job.plan.meta.author,
     coverImage: undefined,
     chapters: chapters.map((chapter) => ({ id: chapter.id, title: chapter.title, chunks: content(chapter).chunks })),
-  }]);
+  });
   assert.equal(job.exportBook.mock.callCount(), 1);
   assert.deepEqual(job.createUrl.mock.calls[0]!.arguments, [job.blob]);
   assert.deepEqual(job.download.mock.calls[0]!.arguments, [{
@@ -176,7 +176,19 @@ test("job downloads without reporting metrics when the plan does not enable them
   const job = await setup(t, { showMetrics: undefined, format: "pdf" });
   await job.run();
   assert.deepEqual(job.metrics, []);
+  assert.equal(job.exportBook.mock.calls[0]?.arguments[1], undefined);
   assert.equal(job.download.mock.callCount(), 1);
+});
+
+test("job passes PDF page counts to the view", async (t) => {
+  const job = await setup(t, { format: "pdf" });
+  const counts = { totalPages: 5, pagesWithoutCanvas: 3 };
+  job.exportBook.mock.mockImplementation(async (_book, reportPages) => {
+    reportPages?.(counts);
+    return job.blob;
+  });
+  await job.run();
+  assert.deepEqual(job.metrics.at(-1)?.assembly?.pageMetrics, counts);
 });
 
 test("job saves only completed chapters and stops fetching after a failure", async (t: TestContext): Promise<void> => {

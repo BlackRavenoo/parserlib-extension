@@ -14,9 +14,14 @@ export interface Book {
   identity?: BookIdentity;
 }
 
+export interface ExportPageMetrics {
+  totalPages: number;
+  pagesWithoutCanvas: number;
+}
+
 export interface Exporter {
   readonly extension: "fb2" | "epub" | "pdf";
-  export(book: Book): Promise<Blob>;
+  export(book: Book, reportPages?: (metrics: ExportPageMetrics) => void): Promise<Blob>;
   inspectExisting?(file: Blob, title: string, identity?: BookIdentity): Promise<Set<number>>;
   append?(book: Book, file: Blob): Promise<Blob>;
 }

@@ -23,6 +23,10 @@ function showMetrics({ imageBytes, originalFileBytes, assembly }: JobMetrics): v
       : `${formatNumber.format(assembly.durationMs / 1000)} с`;
     lines.push(`Время экспорта — ${duration}`);
     if (assembly.outputBytes !== undefined) lines.push(`Размер результата — ${formatBytes(assembly.outputBytes)}`);
+    if (assembly.pageMetrics) {
+      const { totalPages, pagesWithoutCanvas } = assembly.pageMetrics;
+      lines.push(`Страниц PDF без canvas — ${pagesWithoutCanvas} из ${totalPages}`);
+    }
     lines.push(
       "Интервал экспорта (UTC)",
       `${new Date(assembly.startedAt).toISOString()} ${new Date(assembly.finishedAt).toISOString()}`
