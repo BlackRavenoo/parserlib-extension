@@ -1,6 +1,6 @@
 # ParserLib Extension
 
-[![Проверка покрытия](https://github.com/BlackRavenoo/parserlib-extension/actions/workflows/coverage.yml/badge.svg?branch=master)](https://github.com/BlackRavenoo/parserlib-extension/actions/workflows/coverage.yml)
+[![Проверки CI](https://github.com/BlackRavenoo/parserlib-extension/actions/workflows/coverage.yml/badge.svg?branch=master)](https://github.com/BlackRavenoo/parserlib-extension/actions/workflows/coverage.yml)
 [![Покрытие строк](https://raw.githubusercontent.com/BlackRavenoo/parserlib-extension/coverage-badge/coverage.svg)](https://github.com/BlackRavenoo/parserlib-extension/actions/workflows/coverage.yml)
 
 Расширение для скачивания манги и ранобэ с сайтов LibSocial. Откройте страницу произведения, выберите главы и получите файл в формате FB2, EPUB или PDF. Проект использует идеи [parserlib](https://github.com/BlackRavenoo/parserlib), но работает прямо в браузере.
@@ -56,8 +56,6 @@ npx tsc --noEmit     # проверка типов
 npm run zip          # сборка ZIP-архива расширения
 ```
 
-Coverage workflow запускается при push в `master` и для pull request. Показатель на бейдже — **покрытие строк** файлов `src/**/*.ts`; он обновляется по результату push в `master`. Полный отчёт можно скачать из артефакта `coverage-report` на странице запуска workflow.
-
 ### Замер экспорта
 
 Чтобы увидеть метрики, нажмите шестерёнку в popup и включите «Показывать метрики экспорта». Настройка сохраняется для следующих загрузок. По умолчанию метрики скрыты.
@@ -66,8 +64,10 @@ Coverage workflow запускается при push в `master` и для pull 
 
 Для PDF строка «Страниц PDF без canvas» показывает, сколько страниц собрано прямой вставкой исходного JPEG, и общее число страниц. Страницы с текстом, несколькими изображениями или JPEG с неподдерживаемыми метаданными собираются на canvas.
 
-Для замера RAM Firefox на Windows:
+Для замера RAM Firefox на Windows или Linux:
 
 1. Откройте `about:processes` и запомните PID процесса **Extensions**. До экспорта запустите `npm run profile:firefox -- 12345`, подставив свой PID.
 2. После экспорта скопируйте строку под «Интервал экспорта (UTC)» из вкладки загрузки и вставьте её в терминал.
 3. Терминал покажет рабочий набор процесса перед экспортом, максимальный и последний замеры за выбранный интервал. Замеры идут с шагом около 200 мс. Короткие пики между замерами могут остаться незамеченными, а рабочий набор процесса Extensions включает другие активные расширения.
+
+На Linux скрипт читает RSS (`VmRSS`) выбранного процесса из `/proc/PID/status`.
