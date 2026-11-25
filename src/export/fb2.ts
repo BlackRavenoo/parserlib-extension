@@ -6,6 +6,10 @@ import { openExistingFb2 } from "./fb2-existing";
 const FB2_MIME = "application/x-fictionbook+xml";
 
 function bytesToBase64(bytes: Uint8Array): string {
+  if ("toBase64" in bytes && typeof bytes.toBase64 === "function") {
+    return bytes.toBase64();
+  }
+
   let binary = "";
   const chunkSize = 0x8000;
   for (let i = 0; i < bytes.length; i += chunkSize) {

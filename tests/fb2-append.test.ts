@@ -23,6 +23,37 @@ function section(xml: string, id: number): string {
   return new RegExp(`<section id="chapter_${id}">[\\s\\S]*?</section>`).exec(xml)![0];
 }
 
+test("FB2 native Base64 encodes image views identically to the fallback in export and append", async (t) => {
+  const data = Uint8Array.from({ length: 0x8005 }, (_, index) => index % 256);
+  const cover = data.subarray(1, 3);
+  const firstImage = data.subarray(3);
+  const nextImage = data.subarray(3, 4);
+  const withImage = (id: number, image: Uint8Array): BookChapter => ({
+    id, title: `Глава ${id}`, chunks: [{ kind: "image", data: image, mime: "image/jpeg" }],
+  });
+  const originalBook = {
+    ...firstBook,
+    coverImage: { data: cover, mime: "image/png" },
+    chapters: [withImage(1, firstImage)],
+  };
+  const additionalBook = { ...nextBook, chapters: [withImage(2, nextImage)] };
+  const views = [cover, firstImage, nextImage];
+  for (const view of views) Object.defineProperty(view, "toBase64", { value: undefined, configurable: true });
+  const fallback = await fb2Exporter.export(originalBook);
+  const fallbackAppend = await fb2Exporter.append!(additionalBook, fallback);
+
+  const native = t.mock.fn(function (this: Uint8Array) {
+    return Buffer.from(this).toString("base64");
+  });
+  for (const view of views) Object.defineProperty(view, "toBase64", { value: native });
+  const fast = await fb2Exporter.export(originalBook);
+  const fastAppend = await fb2Exporter.append!(additionalBook, fast);
+
+  assert.deepEqual(native.mock.calls.map((call) => call.this), views);
+  assert.deepEqual(await fast.bytes(), await fallback.bytes());
+  assert.deepEqual(await fastAppend.bytes(), await fallbackAppend.bytes());
+});
+
 test("FB2 fills chapter gaps in order and preserves old sections, cover and image bytes", async () => {
   const original = await fb2Exporter.export(firstBook);
   const oldXml = await original.text();
