@@ -6,6 +6,16 @@ import { setGlobal } from "./globals";
 type Extension = typeof import("../../src/lib/browser").ext;
 type BrowserKind = "Chrome" | "Firefox";
 
+function createEvent<T>() {
+  const listeners = new Set<(value: T) => void>();
+  return {
+    listeners,
+    addListener: (listener: (value: T) => void) => listeners.add(listener),
+    removeListener: (listener: (value: T) => void) => listeners.delete(listener),
+    emit: (value: T) => { for (const listener of listeners) listener(value); },
+  };
+}
+
 function createApi(t: TestContext) {
   return {
     runtime: {} as { lastError?: { message: string } },
@@ -15,7 +25,10 @@ function createApi(t: TestContext) {
     },
     tabs: { query: t.mock.fn(), create: t.mock.fn() },
     scripting: { executeScript: t.mock.fn() },
-    downloads: { download: t.mock.fn() },
+    downloads: {
+      download: t.mock.fn(), search: t.mock.fn(),
+      onChanged: createEvent<chrome.downloads.DownloadDelta>(), onErased: createEvent<number>(),
+    },
   };
 }
 
@@ -103,6 +116,65 @@ export function testBrowser(kind: BrowserKind): void {
     const { ext } = await import("../../src/lib/browser");
     return { api, ext };
   }
+
+  function watchDownload(api: Api, ext: Extension, result: Partial<chrome.downloads.DownloadItem>[] = [{ id: 42, state: "in_progress" }]) {
+    api.downloads.search.mock.mockImplementation(async () => result);
+    const pending = ext.downloads.waitForCompletion(42);
+    assert.deepEqual(api.downloads.search.mock.calls[0]!.arguments[0], { id: 42 });
+    if (kind === "Chrome") api.downloads.search.mock.calls[0]!.arguments[1](result);
+    return pending;
+  }
+
+  test(`${kind} waits for a terminal event for the requested download and removes listeners`, { timeout: 5000 }, async (t) => {
+    const { api, ext } = await setup(t);
+    const pending = watchDownload(api, ext);
+    let settled = false;
+    void pending.then(() => { settled = true; });
+
+    api.downloads.onChanged.emit({ id: 7, state: { current: "complete" } });
+    api.downloads.onErased.emit(7);
+    api.downloads.onChanged.emit({ id: 42, paused: { current: true } });
+    await Promise.resolve();
+    assert.equal(settled, false);
+    assert.equal(api.downloads.onChanged.listeners.size, 1);
+
+    api.downloads.onChanged.emit({ id: 42, state: { current: "complete" } });
+    await pending;
+    assert.equal(api.downloads.onChanged.listeners.size, 0);
+    assert.equal(api.downloads.onErased.listeners.size, 0);
+  });
+
+  test(`${kind} recognises a download already completed before subscribing`, async (t) => {
+    const { api, ext } = await setup(t);
+    await watchDownload(api, ext, [{ id: 42, state: "complete" }]);
+    assert.equal(api.downloads.onChanged.listeners.size, 0);
+    assert.equal(api.downloads.onErased.listeners.size, 0);
+  });
+
+  test(`${kind} rejects a download interrupted after subscribing with the browser error`, async (t) => {
+    const { api, ext } = await setup(t);
+    const pending = watchDownload(api, ext);
+    api.downloads.onChanged.emit({ id: 42, state: { current: "interrupted" }, error: { current: "CRASH" } });
+    await assert.rejects(pending, /Сохранение файла прервано \(CRASH\)/);
+    assert.equal(api.downloads.onChanged.listeners.size, 0);
+    assert.equal(api.downloads.onErased.listeners.size, 0);
+  });
+
+  test(`${kind} stops watching if the download is removed from history`, async (t) => {
+    const { api, ext } = await setup(t);
+    const pending = watchDownload(api, ext);
+    api.downloads.onErased.emit(42);
+    await assert.rejects(pending, /удалена из истории/);
+    assert.equal(api.downloads.onChanged.listeners.size, 0);
+    assert.equal(api.downloads.onErased.listeners.size, 0);
+  });
+
+  test(`${kind} stops watching if the download record is missing`, async (t) => {
+    const { api, ext } = await setup(t);
+    await assert.rejects(watchDownload(api, ext, []), /не нашёл запись/);
+    assert.equal(api.downloads.onChanged.listeners.size, 0);
+    assert.equal(api.downloads.onErased.listeners.size, 0);
+  });
 
   for (const operation of operations) {
     test(`${kind} shim forwards arguments and waits for ${operation.name}`, async (t) => {

@@ -172,14 +172,16 @@ export async function runJob(planId: string, view: JobView): Promise<void> {
     }
   }
 
+  setStatus("Сохраняю файл…", downloaded, chapters.length);
   const objectUrl = URL.createObjectURL(blob);
   try {
-    await ext.downloads.download({
+    const downloadId = await ext.downloads.download({
       url: objectUrl,
       filename: `${sanitizeFilename(plan.meta.title)}.${exporter.extension}`,
       saveAs: false,
       conflictAction: "uniquify",
     });
+    await ext.downloads.waitForCompletion(downloadId);
   } finally {
     URL.revokeObjectURL(objectUrl);
   }

@@ -58,6 +58,7 @@ async function setup(t: TestContext, overrides: Partial<JobPlan> = {}) {
   const blob = new Blob(["готовая книга"], { type: "application/epub+zip" });
   const exportBook = t.mock.method(exporter, "export", async (_book: Book, _reportPages?: (pages: ExportPageMetrics) => void) => blob);
   const download = t.mock.method(ext.downloads, "download", async (_options: chrome.downloads.DownloadOptions) => 42);
+  const waitForCompletion = t.mock.method(ext.downloads, "waitForCompletion", async (_id: number) => {});
   const createUrl = t.mock.method(URL, "createObjectURL", (_blob: Blob) => "blob:test-job");
   const revokeUrl = t.mock.method(URL, "revokeObjectURL", (_url: string) => {});
   const fetch = t.mock.fn<typeof globalThis.fetch>(async () => { throw new Error("Неожиданный сетевой запрос."); });
@@ -70,7 +71,7 @@ async function setup(t: TestContext, overrides: Partial<JobPlan> = {}) {
   });
   return {
     plan, id, view, classes, metrics, session, source, exporter, blob,
-    fetchChapter, exportBook, download, createUrl, revokeUrl, fetch, warn,
+    fetchChapter, exportBook, download, waitForCompletion, createUrl, revokeUrl, fetch, warn,
     run: () => runJob(id, view),
   };
 }
@@ -250,22 +251,31 @@ test("job releases its object URL when the browser rejects the download", async 
   assert.doesNotMatch(job.view.status.textContent, /файл сохранён/i);
 });
 
-test("job keeps the object URL until the browser finishes accepting the download", { timeout: 5000 }, async (t: TestContext): Promise<void> => {
+test("job keeps the object URL until the browser confirms the file was saved", { timeout: 5000 }, async (t: TestContext): Promise<void> => {
   const job = await setup(t);
-  const entered = Promise.withResolvers<void>();
-  const accepted = Promise.withResolvers<number>();
-  job.download.mock.mockImplementation(async () => {
-    entered.resolve();
-    return accepted.promise;
+  const waitingFor = Promise.withResolvers<number>();
+  const completed = Promise.withResolvers<void>();
+  job.waitForCompletion.mock.mockImplementation((id) => {
+    waitingFor.resolve(id);
+    return completed.promise;
   });
   const pending = job.run();
-  await entered.promise;
+  assert.equal(await waitingFor.promise, 42);
   assert.equal(job.revokeUrl.mock.callCount(), 0);
-  assert.doesNotMatch(job.view.status.textContent, /файл сохранён/i);
-  accepted.resolve(42);
+  assert.equal(job.view.status.textContent, "Сохраняю файл…");
+  completed.resolve();
   await pending;
   assert.equal(job.revokeUrl.mock.callCount(), 1);
   assert.match(job.view.status.textContent, /Готово, файл сохранён/);
+});
+
+test("job releases the object URL and propagates an interruption after the browser starts saving", async (t: TestContext) => {
+  const job = await setup(t);
+  const error = new Error("Сохранение файла прервано (CRASH).");
+  job.waitForCompletion.mock.mockImplementation(async () => { throw error; });
+  await assert.rejects(job.run(), (reason) => reason === error);
+  assert.deepEqual(job.revokeUrl.mock.calls.map(({ arguments: args }) => args), [["blob:test-job"]]);
+  assert.doesNotMatch(job.view.status.textContent, /файл сохранён/i);
 });
 
 test("job appends missing chapters including gaps and passes the original EPUB to the exporter", async (t: TestContext): Promise<void> => {

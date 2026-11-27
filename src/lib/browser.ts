@@ -14,6 +14,43 @@ function promisify<T>(fn: (cb: (result: T) => void) => void): Promise<T> {
   });
 }
 
+function waitForDownload(id: number): Promise<void> {
+  const downloads = (hasNativeBrowser ? browser! : chrome).downloads;
+  let removeListeners: (() => void) | undefined;
+
+  return new Promise<void>((resolve, reject) => {
+    function checkState(state: string | undefined, error?: string): void {
+      if (state === "complete") resolve();
+      if (state === "interrupted") {
+        reject(new Error(error ? `Сохранение файла прервано (${error}).` : "Сохранение файла прервано."));
+      }
+    }
+
+    function onChanged(delta: chrome.downloads.DownloadDelta): void {
+      if (delta.id === id) checkState(delta.state?.current, delta.error?.current);
+    }
+
+    function onErased(erasedId: number): void {
+      if (erasedId === id) reject(new Error("Запись о сохранении файла удалена из истории загрузок."));
+    }
+
+    removeListeners = () => {
+      downloads.onChanged.removeListener(onChanged);
+      downloads.onErased.removeListener(onErased);
+    };
+    downloads.onChanged.addListener(onChanged);
+    downloads.onErased.addListener(onErased);
+
+    const search = hasNativeBrowser
+      ? downloads.search({ id })
+      : promisify<chrome.downloads.DownloadItem[]>((cb) => downloads.search({ id }, cb));
+    void search.then(([item]) => {
+      if (item) checkState(item.state, item.error);
+      else reject(new Error("Браузер не нашёл запись о сохранении файла."));
+    }, reject);
+  }).finally(() => removeListeners?.());
+}
+
 export const ext = {
   storage: {
     local: {
@@ -63,5 +100,6 @@ export const ext = {
       hasNativeBrowser
         ? browser!.downloads.download(options)
         : promisify((cb) => chrome.downloads.download(options, cb)),
+    waitForCompletion: waitForDownload,
   },
 };
